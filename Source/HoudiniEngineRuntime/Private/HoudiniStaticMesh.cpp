@@ -230,7 +230,15 @@ void UHoudiniStaticMesh::SetTriangleVertexColor(uint32 InTriangleIndex, uint8 In
 	const uint32 VertexInstanceIndex = InTriangleIndex * 3 + InTriangleVertexIndex;
 	check(VertexInstanceColors.IsValidIndex(VertexInstanceIndex));
 
-	VertexInstanceColors[VertexInstanceIndex] = InColor;
+	// Convert to linear
+	FLinearColor LinearColor = InColor.ReinterpretAsLinear();
+	FColor Color = LinearColor.ToFColor(true);
+
+	// Store
+	VertexInstanceColors[VertexInstanceIndex].R = Color.R;
+	VertexInstanceColors[VertexInstanceIndex].G = Color.G;
+	VertexInstanceColors[VertexInstanceIndex].B = Color.B;
+	VertexInstanceColors[VertexInstanceIndex].A = Color.A;
 }
 
 void UHoudiniStaticMesh::SetTriangleVertexUV(uint32 InTriangleIndex, uint8 InTriangleVertexIndex, uint8 InUVLayer, const FVector2f& InUV)

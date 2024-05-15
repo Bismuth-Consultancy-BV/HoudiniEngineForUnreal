@@ -33,6 +33,7 @@
 #include "Components/ComboBox.h"
 
 
+struct FHoudiniBakeSettings;
 class IDetailCategoryBuilder;
 class FDetailWidgetRow;
 class UHoudiniOutput;
@@ -49,6 +50,7 @@ class ALandscapeSplineActor;
 class SBorder;
 class SComboButton;
 class USkeletalMesh;
+class USkeleton;
 
 struct FHoudiniGeoPartObject;
 struct FHoudiniOutputObjectIdentifier;
@@ -184,6 +186,7 @@ public:
 		const UObject* OutputOwner,
 		UHoudiniOutput* InOutput,
 		const FString & BakeFolder,
+		const FHoudiniBakeSettings& BakeSettings,
 		const FString & TempCookFolder,
 		const EHoudiniLandscapeOutputBakeType & LandscapeBakeType,
 		const TArray<UHoudiniOutput*>& InAllOutputs);

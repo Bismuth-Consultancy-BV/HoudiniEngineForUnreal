@@ -128,11 +128,11 @@ FAssetTypeActions_HoudiniAsset::GetActions(const TArray<UObject *> & InObjects, 
 	);
 
 	MenuBuilder.AddMenuEntry(
-		NSLOCTEXT("HoudiniAssetTypeActions", "HoudiniAsset_FindInExplorer", "Find Source"),
+		NSLOCTEXT("HoudiniAssetTypeActions", "HoudiniAsset_FindInExplorer", "Find Source HDA"),
 		NSLOCTEXT(
 			"HoudiniAssetTypeActions", "HoudiniAsset_FindInExplorerTooltip",
-			"Opens explorer at the location of this asset."),
-		FSlateIcon(StyleSetName, "HoudiniEngine.Hou_OpenInHoudinidiniEngineLogo"),
+			"Opens explorer at the location of this asset's source HDA."),
+		FSlateIcon(_GetEditorStyle().GetStyleSetName(), "ContentBrowser.ShowInExplorer"),
 		FUIAction(
 			FExecuteAction::CreateSP(this, &FAssetTypeActions_HoudiniAsset::ExecuteFindInExplorer, HoudiniAssets),
 			FCanExecuteAction::CreateLambda([=] { return ValidObjects; })

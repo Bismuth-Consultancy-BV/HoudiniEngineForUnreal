@@ -1100,8 +1100,9 @@ UHoudiniPublicAPIWorldInput::UHoudiniPublicAPIWorldInput()
 	bPreferNaniteFallbackMesh = HoudiniRuntimeSettings ? HoudiniRuntimeSettings->bPreferNaniteFallbackMesh : false;
 	bExportLevelInstanceContent = true;
 	bDirectlyConnectHdas = true;
-	bExportEditLayers = true;
-	bExportPaintLayers = true;
+	bExportHeightDataPerEditLayer = true;
+	bExportMergedPaintLayers = true;
+	bExportPaintLayersPerEditLayer = false;
 }
 
 bool
@@ -1134,8 +1135,9 @@ UHoudiniPublicAPIWorldInput::PopulateFromHoudiniInput(UHoudiniInput const* const
 	UnrealSplineResolution = InInput->GetUnrealSplineResolution();
 	bExportLevelInstanceContent = InInput->IsExportLevelInstanceContentEnabled();
 	bDirectlyConnectHdas = InInput->GetDirectlyConnectHdas();
-	bExportEditLayers = InInput->IsEditLayerExportEnabled();
-	bExportPaintLayers = InInput->IsPaintLayerExportEnabled();
+	bExportHeightDataPerEditLayer = InInput->IsEditLayerHeightExportEnabled();
+	bExportPaintLayersPerEditLayer= InInput->IsPaintLayerPerEditLayerExportEnabled();
+	bExportMergedPaintLayers = InInput->IsMergedPaintLayerExportEnabled();
 
 	return true;
 }
@@ -1200,15 +1202,22 @@ UHoudiniPublicAPIWorldInput::UpdateHoudiniInput(UHoudiniInput* const InInput) co
 		bAnyChanges = true;
 	}
 
-	if (InInput->IsEditLayerExportEnabled() != bExportEditLayers)
+	if (InInput->IsEditLayerHeightExportEnabled() != bExportHeightDataPerEditLayer)
 	{
-		InInput->SetEditLayerExportEnabled(bExportEditLayers);
+		InInput->SetExportHeightDataPerEditLayer(bExportHeightDataPerEditLayer);
 		bAnyChanges = true;
 	}
 
-	if (InInput->IsPaintLayerExportEnabled() != bExportPaintLayers)
+	if (InInput->IsPaintLayerPerEditLayerExportEnabled() != bExportPaintLayersPerEditLayer)
 	{
-		InInput->SetPaintLayerExportEanbled(bExportPaintLayers);
+		InInput->SetExportPaintLayerPerEditLayer(bExportPaintLayersPerEditLayer);
+		bAnyChanges = true;
+	}
+
+
+	if (InInput->IsMergedPaintLayerExportEnabled() != bExportMergedPaintLayers)
+	{
+		InInput->SetExportMergedPaintLayers(bExportMergedPaintLayers);
 		bAnyChanges = true;
 	}
 

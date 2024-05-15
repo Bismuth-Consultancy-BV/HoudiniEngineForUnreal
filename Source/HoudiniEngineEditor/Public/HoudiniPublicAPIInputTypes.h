@@ -638,14 +638,16 @@ public:
 	* If Edit Layers are not needed, disabling this will improve performance
 	*/
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category="Houdini Engine | Public API | Inputs")
-	bool bExportEditLayers;
+	bool bExportHeightDataPerEditLayer;
 
 	/**
-	* If enabled, Paint Layers data will be exported with Landscapes.
-	* If Paint Layers are not needed, disabling this will improve performance
+	* Paint Layer export.
 	*/
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category="Houdini Engine | Public API | Inputs")
-	bool bExportPaintLayers;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Houdini Engine | Public API | Inputs")
+	bool bExportPaintLayersPerEditLayer;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Houdini Engine | Public API | Inputs")
+	bool bExportMergedPaintLayers;
 
 	/**
 	 * Setter for world input object array. If this is a bounds selector (#bIsWorldInputBoundSelector is true), then

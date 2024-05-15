@@ -4395,10 +4395,10 @@ bool SHoudiniToolsPanel::CanShowActiveToolInCategory() const
 	}
 	else if (ActiveTool->CategoryType == EHoudiniToolCategoryType::User)
 	{
-		// Use categories does not typically contain 'hidden' tools. We simple 'remove' tools from user categories
+		// User categories does not typically contain 'hidden' tools. We simple 'remove' tools from user categories
 		// instead of hiding them.
 		return false;
-		return GetHoudiniTools().CanRemoveToolExcludeFromPackageCategory(ActiveTool->GetAssetObject(), ActiveCategoryName);
+		//return GetHoudiniTools().CanRemoveToolExcludeFromPackageCategory(ActiveTool->GetAssetObject(), ActiveCategoryName);
 	}
 
 	return false;

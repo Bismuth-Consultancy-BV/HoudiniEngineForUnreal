@@ -43,9 +43,6 @@ public:
 	// Constructor.
 	FHoudiniAssetComponentDetails();
 
-	// Destructor.
-	virtual ~FHoudiniAssetComponentDetails();
-
 	// IDetailCustomization methods.
 	virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
 
@@ -85,6 +82,4 @@ private:
 
 	// Structure holding the HoudiniAsset details
 	TSharedPtr<FHoudiniEngineDetails, ESPMode::NotThreadSafe> HoudiniEngineDetails;
-
-
 };

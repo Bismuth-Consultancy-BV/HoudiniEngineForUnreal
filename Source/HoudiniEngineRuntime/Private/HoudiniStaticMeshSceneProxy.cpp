@@ -90,8 +90,12 @@ void FHoudiniStaticMeshRenderBufferSet::CopyBuffers()
 	StaticMeshVertexBuffer.BindTangentVertexBuffer(&LocalVertexFactory, Data);
 	StaticMeshVertexBuffer.BindPackedTexCoordVertexBuffer(&LocalVertexFactory, Data);
 	ColorVertexBuffer.BindColorVertexBuffer(&LocalVertexFactory, Data);
-
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
+	FRHICommandListBase& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
+	LocalVertexFactory.SetData(RHICmdList, Data);
+#else
 	LocalVertexFactory.SetData(Data);
+#endif
 	InitOrUpdateResource(&LocalVertexFactory);
 
 	if (TriangleIndexBuffer.Indices.Num() > 0)
@@ -162,7 +166,7 @@ FHoudiniStaticMeshSceneProxy::FHoudiniStaticMeshSceneProxy(UHoudiniStaticMeshCom
 
 FHoudiniStaticMeshSceneProxy::~FHoudiniStaticMeshSceneProxy()
 {
-	check(IsInRenderingThread());
+	//check(IsInRenderingThread());
 
 	for (FHoudiniStaticMeshRenderBufferSet* BufferSet : BufferSets)
 	{
@@ -294,7 +298,12 @@ void FHoudiniStaticMeshSceneProxy::GetDynamicMeshElements(const TArray<const FSc
 				continue;
 
 			FDynamicPrimitiveUniformBuffer &DynamicPrimitiveUniformBuffer = Collector.AllocateOneFrameResource<FDynamicPrimitiveUniformBuffer>();
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
+			//FRHICommandListBase& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
+			DynamicPrimitiveUniformBuffer.Set(
+				Collector.GetRHICommandList(), GetLocalToWorld(), PreviousLocalToWorld, GetBounds(), GetLocalBounds(), true, bHasPrecomputedVolumetricLightmap, bOutputVelocity);
+
+#elif ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1
 			DynamicPrimitiveUniformBuffer.Set(
 				GetLocalToWorld(), PreviousLocalToWorld, GetBounds(), GetLocalBounds(), true, bHasPrecomputedVolumetricLightmap, bOutputVelocity);
 #else

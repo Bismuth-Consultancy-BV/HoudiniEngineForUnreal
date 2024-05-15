@@ -58,6 +58,7 @@ struct FLandscapeSplineSegmentMeshAttributes
 	bool bHasMeshScaleAttribute = false;
 	TArray<float> MeshScale;
 
+	/** Center Adjust. */
 	bool bHasMeshCenterAdjustAttribute = false;
 	TArray<float> CenterAdjust;
 };
@@ -406,7 +407,7 @@ FHoudiniLandscapeSplineTranslator::ProcessLandscapeSplineOutput(
 	// saves the level.
 	InOutput->MarkPackageDirty();
 
-	FHoudiniEngineUtils::UpdateEditorProperties(InOutput, true);
+	FHoudiniEngineUtils::UpdateEditorProperties(true);
 
 	return true;
 }
@@ -682,7 +683,23 @@ FHoudiniLandscapeSplineTranslator::CreateOutputLandscapeSplinesFromHoudiniGeoPar
 	TArray<int32> CurvePointCounts;
 	CurvePointCounts.SetNumZeroed(NumCurves);
 	FHoudiniApi::GetCurveCounts(Session, CurveNodeId, CurvePartId, CurvePointCounts.GetData(), 0, NumCurves);
+
+	// Bug #134941: Unreal may crash when there are a large number of control points. At least output a warning.
+	for(int Index = 0; Index <  CurvePointCounts.Num(); Index++)
+	{
+		int NumPoints = CurvePointCounts[Index];
+
+		if (NumPoints > 1000)
+		{
+			HOUDINI_LOG_ERROR(TEXT(
+						"A landscape spline contains more than 1000 control points. "
+						"This may lead to instability when saving levels in Unreal, limiting the number of points to 1000. "
+						"Consider splitting splines inside Houdini."));
+			CurvePointCounts[Index] = 1000;
+		}
+	}
 	
+
 	// Extract all target landscapes refs as prim attributes
 	TArray<FString> LandscapeRefs;
 	HAPI_AttributeInfo AttrLandscapeRefs;
@@ -1033,10 +1050,18 @@ FHoudiniLandscapeSplineTranslator::CreateOutputLandscapeSplinesFromHoudiniGeoPar
 					ThisControlPoint->ConnectedSegments.Add(FLandscapeSplineConnection(Segment, 1));
 
 					// Auto-calculate rotation if we didn't receive rotation attributes
-					if (!Attributes.bHasPointRotationAttribute || !Attributes.PointRotations.IsValidIndex(PreviousControlPointArrayIdx)) 
+					if (!Attributes.bHasPointRotationAttribute || !Attributes.PointRotations.IsValidIndex(PreviousControlPointArrayIdx))
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
+						PreviousControlPoint->AutoCalcRotation(true);
+#else
 						PreviousControlPoint->AutoCalcRotation();
+#endif
 					if (!Attributes.bHasPointRotationAttribute || !Attributes.PointRotations.IsValidIndex(CurvePointArrayIdx)) 
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
+						ThisControlPoint->AutoCalcRotation(true);
+#else
 						ThisControlPoint->AutoCalcRotation();
+#endif
 
 					// Add the segment to the appropriate LayerOutput. Will create create the LayerOutput if necessary.
 					AddSegmentToOutputObject(Segment, Attributes, CurvePointArrayIdx, InHAC, SplineInfo.LayerPackageParams, *SplineInfo.SplinesOutputObject);
@@ -1241,6 +1266,7 @@ FHoudiniLandscapeSplineTranslator::CopySegmentMeshAttributesFromHoudini(
 		static constexpr int32 MeshCenterAdjustTupleSize = 2;
 		const FString MeshCenterAdjustAttrName = FString::Printf(
 			TEXT("%s%s"), *AttrNamePrefix, TEXT(HAPI_UNREAL_ATTRIB_LANDSCAPE_SPLINE_MESH_CENTER_ADJUST_SUFFIX));
+		
 		HAPI_AttributeInfo MeshCenterAdjustAttrInfo;
 		SegmentAttributes.bHasMeshCenterAdjustAttribute = FHoudiniEngineUtils::HapiGetAttributeDataAsFloat(
 			InNodeId,
@@ -2082,8 +2108,8 @@ FHoudiniLandscapeSplineTranslator::UpdateSegmentFromAttributes(
 
 		// Center Adjust
 		if (PerVertexAttributes && PerVertexAttributes->bHasMeshCenterAdjustAttribute
-				&& PerVertexAttributes->CenterAdjust.IsValidIndex(InVertexIndex * 2)
-				&& PerVertexAttributes->CenterAdjust.IsValidIndex(InVertexIndex * 2 + 1))
+			&& PerVertexAttributes->CenterAdjust.IsValidIndex(InVertexIndex * 2)
+			&& PerVertexAttributes->CenterAdjust.IsValidIndex(InVertexIndex * 2 + 1))
 		{
 			const int32 ValueIdx = InVertexIndex * 2;
 			SplineMeshEntry.CenterAdjust = FVector2D(
@@ -2096,7 +2122,7 @@ FHoudiniLandscapeSplineTranslator::UpdateSegmentFromAttributes(
 				PerVertexAttributes->CenterAdjust[0],
 				PerVertexAttributes->CenterAdjust[1]);
 		}
-		
+
 		// Each segment static mesh can have multiple material overrides
 		// Determine the max from the number of vertex/point material override attributes and the number of prim
 		// material override attributes

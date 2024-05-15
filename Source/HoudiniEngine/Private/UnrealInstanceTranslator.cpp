@@ -455,7 +455,7 @@ FUnrealInstanceTranslator::HapiCreateInputNodeForInstancer(
 			if (FHoudiniApi::ConnectNodeInput(
 					FHoudiniEngine::Get().GetSession(), CopyNodeId, 0, SMChainOutputNodeId, 0) != HAPI_RESULT_SUCCESS)
 			{
-				HOUDINI_LOG_WARNING(TEXT("Failed to connect the '%s' chain to the copytopoints instancer node."), SMChainOutputNodeId);
+				HOUDINI_LOG_WARNING(TEXT("Failed to connect the '%d' chain to the copytopoints instancer node."), (int32)SMChainOutputNodeId);
 			}
 		}
 	}

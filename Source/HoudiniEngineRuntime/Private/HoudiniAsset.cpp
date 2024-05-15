@@ -35,6 +35,9 @@
 #include "Misc/Paths.h"
 #include "HAL/UnrealMemory.h"
 #include "UObject/ObjectSaveContext.h"
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
+#include "UObject/AssetRegistryTagsContext.h"
+#endif
 
 UHoudiniAsset::UHoudiniAsset(const FObjectInitializer & ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -166,8 +169,30 @@ UHoudiniAsset::SerializeLegacy(FArchive & Ar)
 	Ar << AssetFileName;
 }
 
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
 void
-UHoudiniAsset::GetAssetRegistryTags(TArray< FAssetRegistryTag > & OutTags) const
+UHoudiniAsset::GetAssetRegistryTags(FAssetRegistryTagsContext Context) const
+{
+
+	Context.AddTag(FAssetRegistryTag("FileName", AssetFileName, FAssetRegistryTag::TT_Alphabetical));
+
+	// Bytes
+	Context.AddTag(FAssetRegistryTag("Bytes", FString::FromInt(AssetBytesCount), FAssetRegistryTag::TT_Numerical));
+
+	// Indicate if the Asset is Full / Indie / NC
+	FString AssetType = TEXT("Full");
+	if (bAssetLimitedCommercial)
+		AssetType = TEXT("Limited Commercial (LC)");
+	else if (bAssetNonCommercial)
+		AssetType = TEXT("Non Commercial (NC)");
+
+	Context.AddTag(FAssetRegistryTag("Asset Type", AssetType, FAssetRegistryTag::TT_Alphabetical));
+	Super::GetAssetRegistryTags(Context);
+}
+#endif
+
+void
+UHoudiniAsset::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
 {
 	// Filename
 	OutTags.Add(FAssetRegistryTag("FileName", AssetFileName, FAssetRegistryTag::TT_Alphabetical));
@@ -184,7 +209,9 @@ UHoudiniAsset::GetAssetRegistryTags(TArray< FAssetRegistryTag > & OutTags) const
 
 	OutTags.Add(FAssetRegistryTag("Asset Type", AssetType, FAssetRegistryTag::TT_Alphabetical));
 
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS;
 	Super::GetAssetRegistryTags(OutTags);
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS;
 }
 
 bool

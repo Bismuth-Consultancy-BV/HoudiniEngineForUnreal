@@ -70,6 +70,9 @@ struct HOUDINIENGINERUNTIME_API FHoudiniEngineRuntimeUtils
 		// Sets  to the custom dir in the settings
 		static void SetHoudiniHomeEnvironmentVariable();
 
+		// Helper function for returning a class from its name
+		static UClass* GetClassByName(const FString& InName);
+
 		// -----------------------------------------------
 		// Bounding Box utilities
 		// -----------------------------------------------

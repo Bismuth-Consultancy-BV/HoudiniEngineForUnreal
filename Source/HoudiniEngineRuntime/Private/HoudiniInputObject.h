@@ -930,6 +930,8 @@ public:
 
 	virtual bool ShouldTrackComponent(UActorComponent const* InComponent, const FHoudiniInputObjectSettings* InSettings=nullptr) const override;
 
+	virtual void MarkTransformChanged(const bool bInChanged) override;
+
 	virtual bool HasContentChanged(const FHoudiniInputObjectSettings& InSettings) const override;
 
 	virtual FTransform GetHoudiniObjectTransform() const override;

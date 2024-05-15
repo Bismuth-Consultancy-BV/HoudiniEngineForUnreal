@@ -62,7 +62,24 @@ enum class EHoudiniParameterType : uint8
 	Toggle,
 };
 
+UENUM()
+enum class EHoudiniParameterChoiceListType : uint8
+{
+	/** Parameter is not a menu */
+	None = 0,
 
+	/** Menu Only, Single Selection */
+	Normal,
+
+	/** Mini Menu Only, Single Selection */
+	Mini,
+
+	/** Field + Single Selection Menu */
+	Replace,
+
+	/** Field + Multiple Selection Menu */
+	Toggle
+};
 
 UCLASS(DefaultToInstanced)
 class HOUDINIENGINERUNTIME_API UHoudiniParameter : public UObject
@@ -97,6 +114,7 @@ public:
 	virtual const FString GetParameterHelp() const { return Help; };
 
 	virtual EHoudiniParameterType GetParameterType() const { return ParmType; };
+	virtual EHoudiniParameterChoiceListType GetChoiceListType() const { return ChoiceListType; };
 	virtual int32 GetTupleSize() const { return TupleSize; };
 	virtual int32 GetNodeId() const { return NodeId; };
 	virtual int32 GetParmId() const { return ParmId; };
@@ -111,6 +129,7 @@ public:
 	virtual bool IsDefault() const { return true; };
 	virtual bool IsSpare() const { return bIsSpare; };
 	virtual bool GetJoinNext() const { return bJoinNext; };
+	virtual bool IsLabelVisible() const { return bIsLabelVisible; };
 	virtual bool IsAutoUpdate() const { return bAutoUpdate; };
 
 	virtual int32 GetTagCount() const { return TagCount; };
@@ -137,6 +156,7 @@ public:
 	virtual void SetParameterHelp(const FString& InHelp) { Help = InHelp; };
 
 	virtual void SetParameterType(const EHoudiniParameterType& InType) { ParmType = InType; };
+	virtual void SetChoiceListType(const EHoudiniParameterChoiceListType& InType) { ChoiceListType = InType; };
 	virtual void SetTupleSize(const uint32& InTupleSize) { TupleSize = InTupleSize; };
 	virtual void SetNodeId(const int32& InNodeId) { NodeId = InNodeId; };
 	virtual void SetParmId(const int32& InParmId) { ParmId = InParmId; };
@@ -155,6 +175,7 @@ public:
 	virtual void SetDefault(const bool& InIsDefault) { bIsDefault = InIsDefault; };
 	virtual void SetSpare(const bool& InIsSpare) { bIsSpare = InIsSpare; };
 	virtual void SetJoinNext(const bool& InJoinNext) { bJoinNext = InJoinNext; };
+	virtual void SetLabelVisible(const bool& bInIsLabelVisible) { bIsLabelVisible = bInIsLabelVisible; };
 
 	virtual void SetTagCount(const uint32& InTagCount) { TagCount = InTagCount; };
 	virtual void SetValueIndex(const uint32& InValueIndex) { ValueIndex = InValueIndex; };
@@ -215,6 +236,10 @@ protected:
 	UPROPERTY()
 	EHoudiniParameterType ParmType;
 
+	// The menu type of this parameter, None if it is not a menu.
+	UPROPERTY()
+	EHoudiniParameterChoiceListType ChoiceListType;
+
 	// Tuple size. For scalar parameters this value is 1, but for vector parameters this value can be greater.
 	UPROPERTY()
 	uint32 TupleSize;
@@ -266,6 +291,10 @@ protected:
 	// 
 	UPROPERTY()
 	bool bJoinNext;
+
+	// Whether the label should be displayed.
+	UPROPERTY()
+	bool bIsLabelVisible;
 
 	// 
 	UPROPERTY()

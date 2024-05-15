@@ -106,7 +106,7 @@ FHoudiniAnimationTranslator::IsMotionClipFrame(const HAPI_NodeId& GeoId, const H
 	return true;
 }
 
-void 
+bool 
 FHoudiniAnimationTranslator::CreateAnimSequenceFromOutput(
 	UHoudiniOutput* InOutput,
 	const FHoudiniPackageParams& InPackageParams,
@@ -115,7 +115,7 @@ FHoudiniAnimationTranslator::CreateAnimSequenceFromOutput(
 
 	//Loop over hgpo in Output cand
 	const TArray<FHoudiniGeoPartObject>& HGPOs = InOutput->GetHoudiniGeoPartObjects(); 
-	CreateAnimationFromMotionClip(InOutput, HGPOs, InPackageParams, InOuterComponent);
+	return CreateAnimationFromMotionClip(InOutput, HGPOs, InPackageParams, InOuterComponent);
 }
 
 UAnimSequence*
@@ -655,7 +655,11 @@ bool FHoudiniAnimationTranslator::CreateAnimationFromMotionClip(UHoudiniOutput* 
 			}
 			else
 			{
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
+				HOUDINI_LOG_ERROR(TEXT("Bone '%s' is missing from bone tracks."), *Bone.ToString());
+#else
 				HOUDINI_LOG_ERROR(TEXT("Bone '%s' is missing from bone tracks."), Bone);
+#endif
 			}
 		}
 

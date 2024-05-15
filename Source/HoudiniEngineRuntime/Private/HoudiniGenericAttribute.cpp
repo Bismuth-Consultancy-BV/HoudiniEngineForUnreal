@@ -28,16 +28,18 @@
 
 #include "HoudiniEngineRuntimePrivatePCH.h"
 #include "HoudiniAssetComponent.h"
+//#include "HoudiniEngineUtils.h"
 
-#include "Engine/StaticMesh.h"
+#include "AI/Navigation/NavCollisionBase.h"
 #include "Components/ActorComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/StaticMeshComponent.h"
-#include "Landscape.h"
-
-#include "PhysicsEngine/BodySetup.h"
 #include "EditorFramework/AssetImportData.h"
-#include "AI/Navigation/NavCollisionBase.h"
+#include "Engine/StaticMesh.h"
+#include "Landscape.h"
+#include "PhysicsEngine/BodySetup.h"
+
+
 
 FHoudiniGenericAttributeChangedProperty::FHoudiniGenericAttributeChangedProperty()
 	: Object()
@@ -647,7 +649,7 @@ FHoudiniGenericAttribute::UpdatePropertyAttributeOnObject(
 // 	}
 // #endif
 
-	if (!FoundProperty && !FindPropertyOnObject(InObject, PropertyName, FoundPropertyChain, FoundProperty, FoundPropertyObject, OutContainer))
+	if (!FoundProperty && !FindPropertyOnObject(InObject, PropertyName, FoundPropertyChain, FoundProperty, FoundPropertyObject, OutContainer, false))
 		return false;
 
 	// Set the member and active properties on the chain
@@ -674,16 +676,22 @@ FHoudiniGenericAttribute::FindPropertyOnObject(
 	FEditPropertyChain& InPropertyChain,
 	FProperty*& OutFoundProperty,
 	UObject*& OutFoundPropertyObject,
-	void*& OutContainer)
+	void*& OutContainer,
+	bool bDumpAttributes)
 {
 #if WITH_EDITOR
 	if (!IsValid(InObject))
 		return false;
 
 	if (InPropertyName.IsEmpty())
-		return false;
+	{
+		if (InObject->IsA<UClass>())
+			bDumpAttributes = true;
+		else if (!bDumpAttributes)
+			return false;
+	}
 
-	UClass* ObjectClass = InObject->GetClass();
+	UClass* ObjectClass = (InObject->IsA<UClass>() ? Cast<UClass>(InObject) : InObject->GetClass());
 	if (!IsValid(ObjectClass))
 		return false;
 
@@ -692,90 +700,16 @@ FHoudiniGenericAttribute::FindPropertyOnObject(
 	OutFoundProperty = nullptr;
 	OutFoundPropertyObject = InObject;
 
-	bool bPropertyHasBeenFound = false;
+	bool bExactPropertyHasBeenFound = false;
 	FHoudiniGenericAttribute::TryToFindProperty(
 		InObject,
 		ObjectClass,
 		InPropertyName,
 		InPropertyChain,
 		OutFoundProperty,
-		bPropertyHasBeenFound,
-		OutContainer);
-
-	/*
-	// TODO: Parsing needs to be made recursively!
-	// Iterate manually on the properties, in order to handle StructProperties correctly
-	for (TFieldIterator<FProperty> PropIt(ObjectClass, EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
-	{
-		FProperty* CurrentProperty = *PropIt;
-		if (!CurrentProperty)
-			continue;
-
-		FString DisplayName = CurrentProperty->GetDisplayNameText().ToString().Replace(TEXT(" "), TEXT(""));
-		FString Name = CurrentProperty->GetName();
-
-		// If the property name contains the uprop attribute name, we have a candidate
-		if (Name.Contains(InPropertyName) || DisplayName.Contains(InPropertyName))
-		{
-			OutFoundProperty = CurrentProperty;
-
-			// If it's an equality, we dont need to keep searching
-			if ((Name == InPropertyName) || (DisplayName == InPropertyName))
-			{
-				bPropertyHasBeenFound = true;
-				break;
-			}
-		}
-
-		// StructProperty need to be a nested struct
-		//if (UStructProperty* StructProperty = Cast< UStructProperty >(CurrentProperty))
-		//	bPropertyHasBeenFound = TryToFindInStructProperty(InObject, InPropertyName, StructProperty, OutFoundProperty, OutStructContainer);
-		//else if (UArrayProperty* ArrayProperty = Cast< UArrayProperty >(CurrentProperty))
-		//	bPropertyHasBeenFound = TryToFindInArrayProperty(InObject, InPropertyName, ArrayProperty, OutFoundProperty, OutStructContainer);
-
-		// Handle StructProperty
-		FStructProperty* StructProperty = CastField<FStructProperty>(CurrentProperty);
-		if (StructProperty)
-		{
-			// Walk the structs' properties and try to find the one we're looking for
-			UScriptStruct* Struct = StructProperty->Struct;
-			if (!IsValid(Struct))
-				continue;
-
-			for (TFieldIterator<FProperty> It(Struct); It; ++It)
-			{
-				FProperty* Property = *It;
-				if (!Property)
-					continue;
-
-				DisplayName = Property->GetDisplayNameText().ToString().Replace(TEXT(" "), TEXT(""));
-				Name = Property->GetName();
-
-				// If the property name contains the uprop attribute name, we have a candidate
-				if (Name.Contains(InPropertyName) || DisplayName.Contains(InPropertyName))
-				{
-					// We found the property in the struct property, we need to keep the ValuePtr in the object
-					// of the structProp in order to be able to access the property value afterwards...
-					OutFoundProperty = Property;
-					OutStructContainer = StructProperty->ContainerPtrToValuePtr< void >(InObject, 0);
-
-					// If it's an equality, we dont need to keep searching
-					if ((Name == InPropertyName) || (DisplayName == InPropertyName))
-					{
-						bPropertyHasBeenFound = true;
-						break;
-					}
-				}
-			}
-		}
-
-		if (bPropertyHasBeenFound)
-			break;
-	}
-
-	if (bPropertyHasBeenFound)
-		return true;
-	*/
+		bExactPropertyHasBeenFound,
+		OutContainer,
+		bDumpAttributes);
 
 	// Try with FindField??
 	if (!OutFoundProperty)
@@ -785,31 +719,89 @@ FHoudiniGenericAttribute::FindPropertyOnObject(
 	if (!OutFoundProperty)
 		OutFoundProperty = ObjectClass->FindPropertyByName(*InPropertyName);
 
-	// We found the Property we were looking for
-	if (OutFoundProperty)
+	// We found exactly the Property we were looking for
+	if (OutFoundProperty && bExactPropertyHasBeenFound)
 		return true;
+
+	// We may have found a property that matches what we're looking for
+	// but not exactly - see if we can find a better match on some nested classes
+	FProperty* SecondaryFoundProperty = nullptr ;
+	UObject* SecondaryPropertyObject = InObject;
+	void* SecondaryContainer = nullptr;
+	bool bSecondaryFound = false;
 
 	// Handle common properties nested in classes
 	// Static Meshes
 	UStaticMesh* SM = Cast<UStaticMesh>(InObject);
 	if (IsValid(SM))
 	{
-		if (SM->GetBodySetup() && FindPropertyOnObject(
-			SM->GetBodySetup(), InPropertyName, InPropertyChain, OutFoundProperty, OutFoundPropertyObject, OutContainer))
+		UObject* BS = SM->GetBodySetup();
+		if (bDumpAttributes)
 		{
-			return true;
+			HOUDINI_LOG_MESSAGE(TEXT(" "));
+			HOUDINI_LOG_MESSAGE(TEXT("\n------------ BODY SETUP ------------------------------------------------------------------------------------"));
+
+			if (!IsValid(BS))
+				BS = FHoudiniEngineRuntimeUtils::GetClassByName("BodySetup");
 		}
 
-		if (SM->AssetImportData && FindPropertyOnObject(
-			SM->AssetImportData, InPropertyName, InPropertyChain, OutFoundProperty, OutFoundPropertyObject, OutContainer))
+		if (BS && FindPropertyOnObject(
+			BS, InPropertyName, InPropertyChain, SecondaryFoundProperty, SecondaryPropertyObject, SecondaryContainer, bDumpAttributes))
 		{
-			return true;
+			bSecondaryFound = true;
 		}
 
-		if (SM->GetNavCollision() && FindPropertyOnObject(
-			SM->GetNavCollision(), InPropertyName, InPropertyChain, OutFoundProperty, OutFoundPropertyObject, OutContainer))
+		if (bDumpAttributes)
 		{
-			return true;
+			HOUDINI_LOG_MESSAGE(TEXT("\n------------ BODY SETUP END --------------------------------------------------------------------------------"));
+		}
+		
+		if (!bSecondaryFound || bDumpAttributes)
+		{
+			UObject* AID = SM->GetAssetImportData();
+			if (bDumpAttributes)
+			{
+				HOUDINI_LOG_MESSAGE(TEXT(" "));
+				HOUDINI_LOG_MESSAGE(TEXT("------------ ASSET IMPORT DATA -----------------------------------------------------------------------------"));
+
+				if (!IsValid(AID))
+					AID = FHoudiniEngineRuntimeUtils::GetClassByName("AssetImportData");
+			}
+
+			if (AID && FindPropertyOnObject(
+				AID, InPropertyName, InPropertyChain, SecondaryFoundProperty, SecondaryPropertyObject, SecondaryContainer, bDumpAttributes))
+			{
+				bSecondaryFound = true;
+			}
+
+			if (bDumpAttributes)
+			{
+				HOUDINI_LOG_MESSAGE(TEXT("\n------------ ASSET IMPORT DATA END -------------------------------------------------------------------------"));
+			}
+		}
+		
+		if (!bSecondaryFound || bDumpAttributes)
+		{
+			UObject* NC = SM->GetNavCollision();
+			if (bDumpAttributes)
+			{
+				HOUDINI_LOG_MESSAGE(TEXT(" "));
+				HOUDINI_LOG_MESSAGE(TEXT("------------ NAV COLLISION ---------------------------------------------------------------------------------"));
+
+				if (!IsValid(NC))
+					NC = FHoudiniEngineRuntimeUtils::GetClassByName("AssetImportData");
+			}
+
+			if (NC && FindPropertyOnObject(
+				NC, InPropertyName, InPropertyChain, SecondaryFoundProperty, SecondaryPropertyObject, SecondaryContainer, bDumpAttributes))
+			{
+				bSecondaryFound = true;
+			}
+
+			if (bDumpAttributes)
+			{
+				HOUDINI_LOG_MESSAGE(TEXT("\n------------ NAV COLLISION END -----------------------------------------------------------------------------"));
+			}
 		}
 	}
 
@@ -820,17 +812,59 @@ FHoudiniGenericAttribute::FindPropertyOnObject(
 		TArray<USceneComponent*> AllComponents;
 		Actor->GetComponents<USceneComponent>(AllComponents, true);
 
+		if (bDumpAttributes && AllComponents.Num() > 0)
+		{
+			HOUDINI_LOG_MESSAGE(TEXT(" "));
+			HOUDINI_LOG_MESSAGE(TEXT("------------ ACTOR COMPONENTS ------------------------------------------------------------------------------"));
+		}
+
 		int32 CompIdx = 0;
 		for (USceneComponent * SceneComponent : AllComponents)
 		{
 			if (!IsValid(SceneComponent))
 				continue;
 
-			if (FindPropertyOnObject(
-				SceneComponent, InPropertyName, InPropertyChain, OutFoundProperty, OutFoundPropertyObject, OutContainer))
+			if (bDumpAttributes)
 			{
-				return true;
+				HOUDINI_LOG_MESSAGE(TEXT(" "));
+				HOUDINI_LOG_MESSAGE(TEXT("------------ %s"), *SceneComponent->GetClass()->GetName());
 			}
+
+			if (FindPropertyOnObject(
+				SceneComponent, InPropertyName, InPropertyChain, SecondaryFoundProperty, SecondaryPropertyObject, SecondaryContainer, bDumpAttributes))
+			{
+				bSecondaryFound = true;
+			}
+
+			if (bDumpAttributes)
+			{
+				HOUDINI_LOG_MESSAGE(TEXT("------------ %s END"), *SceneComponent->GetClass()->GetName());
+				HOUDINI_LOG_MESSAGE(TEXT(" "));
+			}
+		}
+	}
+
+	// If we found a secondary option for our property 
+	// See if it's a better match than the previous one
+	if (bSecondaryFound && SecondaryFoundProperty)
+	{
+		bool bUseSecondaryProperty = false;
+
+		// See if we have a perfect match for the secondary
+		FString DisplayName = SecondaryFoundProperty->GetDisplayNameText().ToString().Replace(TEXT(" "), TEXT(""));
+		FString Name = SecondaryFoundProperty->GetName();
+		if ((Name == InPropertyName) || (DisplayName == InPropertyName))
+			bUseSecondaryProperty = true;
+
+		// If we didn't find a property the first time, then use the secondary
+		if (!OutFoundProperty)
+			bUseSecondaryProperty = true;
+		
+		if(bUseSecondaryProperty)
+		{
+			OutFoundProperty = SecondaryFoundProperty;
+			OutFoundPropertyObject = SecondaryPropertyObject;
+			OutContainer = SecondaryContainer;
 		}
 	}
 
@@ -850,8 +884,9 @@ FHoudiniGenericAttribute::TryToFindProperty(
 	const FString& InPropertyName,
 	FEditPropertyChain& InPropertyChain,
 	FProperty*& OutFoundProperty,
-	bool& bOutPropertyHasBeenFound,
-	void*& OutContainer)
+	bool& bOutExactPropertyHasBeenFound,
+	void*& OutContainer,
+	bool bDumpAttributes)
 {
 #if WITH_EDITOR
 	if (!InContainer)
@@ -860,7 +895,7 @@ FHoudiniGenericAttribute::TryToFindProperty(
 	if (!IsValid(InStruct))
 		return false;
 
-	if (InPropertyName.IsEmpty())
+	if (InPropertyName.IsEmpty() && !bDumpAttributes)
 		return false;
 
 	// Iterate manually on the properties, in order to handle StructProperties correctly
@@ -879,10 +914,10 @@ FHoudiniGenericAttribute::TryToFindProperty(
 			OutFoundProperty = CurrentProperty;
 			OutContainer = InContainer;
 
-			// If it's an equality, we dont need to keep searching anymore
+			// Stop if we found a property that perfectly match the name we're looking for
 			if ((Name == InPropertyName) || (DisplayName == InPropertyName))
 			{
-				bOutPropertyHasBeenFound = true;
+				bOutExactPropertyHasBeenFound = true;
 				InPropertyChain.AddTail(OutFoundProperty);
 				break;
 			}
@@ -890,8 +925,30 @@ FHoudiniGenericAttribute::TryToFindProperty(
 
 		// Do a recursive parsing for StructProperties
 		FStructProperty* StructProperty = CastField<FStructProperty>(CurrentProperty);
+
+		// Handle dumping the generic attributes for this property
+		if (bDumpAttributes)
+		{
+			bool bSupportedProp = DumpGenericAttributeForProperty(CurrentProperty);
+			if (StructProperty)
+			{
+				// Dont dive inside supported struct properties
+				if (bSupportedProp)
+					continue;
+			}
+
+			// Make sure we never find the property (unnecessary?)
+			//bOutExactPropertyHasBeenFound = false;
+		}
+
 		if (StructProperty)
 		{
+			if (bDumpAttributes)
+			{
+				HOUDINI_LOG_MESSAGE(TEXT(" "));
+				HOUDINI_LOG_MESSAGE(TEXT("-------- STRUCT %s BEGIN "), *StructProperty->GetName());
+			}
+
 			// Walk the structs' properties and try to find the one we're looking for
 			UScriptStruct* Struct = StructProperty->Struct;
 			if (!IsValid(Struct))
@@ -904,17 +961,31 @@ FHoudiniGenericAttribute::TryToFindProperty(
 				InPropertyName,
 				InPropertyChain,
 				OutFoundProperty,
-				bOutPropertyHasBeenFound,
-				OutContainer);
-			if (!bOutPropertyHasBeenFound)
+				bOutExactPropertyHasBeenFound,
+				OutContainer,
+				bDumpAttributes);
+
+
+			if (bDumpAttributes)
+			{
+				HOUDINI_LOG_MESSAGE(TEXT("-------- STRUCT %s END "), *StructProperty->GetName());
+				HOUDINI_LOG_MESSAGE(TEXT(" "));
+			}
+
+			if (!bOutExactPropertyHasBeenFound)
 				InPropertyChain.RemoveNode(InPropertyChain.GetTail());
 		}
 
-		if (bOutPropertyHasBeenFound)
-			break;
+		if (!bDumpAttributes)
+		{
+			// Stop if we found a property that perfectly match the name we're looking for
+			if (bOutExactPropertyHasBeenFound)
+				break;
+		}
+		
 	}
 
-	if (bOutPropertyHasBeenFound)
+	if (bOutExactPropertyHasBeenFound)
 		return true;
 
 	// We found the Property we were looking for
@@ -962,8 +1033,9 @@ FHoudiniGenericAttribute::HandlePostEditChangeProperty(UObject* InObject, FEditP
 		return true;
 	}
 	return false;
-#endif
+#else
 	return true;
+#endif
 }
 
 bool
@@ -1291,6 +1363,60 @@ FHoudiniGenericAttribute::ModifyPropertyValueOnObject(
 				// Found a vector property, fill it with up to 3 tuple values
 				FVector3f& Vector = *static_cast<FVector3f*>(PropertyValue);
 				FVector3f NewVector = FVector3f::ZeroVector;
+				NewVector.X = (float)InGenericAttribute.GetDoubleValue(AtIndex + TupleIndex + 0);
+				if (InGenericAttribute.AttributeTupleSize > 1)
+					NewVector.Y = (float)InGenericAttribute.GetDoubleValue(AtIndex + TupleIndex + 1);
+				if (InGenericAttribute.AttributeTupleSize > 2)
+					NewVector.Z = (float)InGenericAttribute.GetDoubleValue(AtIndex + TupleIndex + 2);
+
+				if (NewVector != Vector)
+				{
+					OnPrePropertyChanged(StructProperty);
+					Vector = NewVector;
+					OnPropertyChanged(StructProperty);
+				}
+			}
+			else if (PropertyName == NAME_Rotator || PropertyName == NAME_Rotator3d)
+			{
+				// Found a Rotator property, fill it with up to 3 tuple values
+				FRotator& Rotator = *static_cast<FRotator*>(PropertyValue);
+				FRotator NewRotator = FRotator::ZeroRotator;
+				NewRotator.Roll = InGenericAttribute.GetDoubleValue(AtIndex + TupleIndex + 0);
+				if (InGenericAttribute.AttributeTupleSize > 1)
+					NewRotator.Pitch = InGenericAttribute.GetDoubleValue(AtIndex + TupleIndex + 1);
+				if (InGenericAttribute.AttributeTupleSize > 2)
+					NewRotator.Yaw = InGenericAttribute.GetDoubleValue(AtIndex + TupleIndex + 2);
+
+				if (NewRotator != Rotator)
+				{
+					OnPrePropertyChanged(StructProperty);
+					Rotator = NewRotator;
+					OnPropertyChanged(StructProperty);
+				}
+			}
+			else if (PropertyName == NAME_Rotator3f)
+			{
+				// Found a Rotator property, fill it with up to 3 tuple values
+				FRotator3f& Rotator = *static_cast<FRotator3f*>(PropertyValue);
+				FRotator3f NewRotator = FRotator3f::ZeroRotator;
+				NewRotator.Roll = (float)InGenericAttribute.GetDoubleValue(AtIndex + TupleIndex + 0);
+				if (InGenericAttribute.AttributeTupleSize > 1)
+					NewRotator.Pitch = (float)InGenericAttribute.GetDoubleValue(AtIndex + TupleIndex + 1);
+				if (InGenericAttribute.AttributeTupleSize > 2)
+					NewRotator.Yaw = (float)InGenericAttribute.GetDoubleValue(AtIndex + TupleIndex + 2);
+
+				if (NewRotator != Rotator)
+				{
+					OnPrePropertyChanged(StructProperty);
+					Rotator = NewRotator;
+					OnPropertyChanged(StructProperty);
+				}
+			}
+			else if (PropertyName == "Vector_NetQuantize100")
+			{
+				// Found a vector property, fill it with up to 3 tuple values
+				FVector_NetQuantize100& Vector = *static_cast<FVector_NetQuantize100*>(PropertyValue);
+				FVector_NetQuantize100 NewVector = FVector_NetQuantize100::ZeroVector;
 				NewVector.X = (float)InGenericAttribute.GetDoubleValue(AtIndex + TupleIndex + 0);
 				if (InGenericAttribute.AttributeTupleSize > 1)
 					NewVector.Y = (float)InGenericAttribute.GetDoubleValue(AtIndex + TupleIndex + 1);
@@ -1881,8 +2007,10 @@ FHoudiniGenericAttribute::GetAttributeTupleSizeAndStorageFromProperty(
 	// }
 
 	FFieldClass* PropertyClass = InnerProperty->GetClass();
-	if (PropertyClass->IsChildOf(FNumericProperty::StaticClass()) || PropertyClass->IsChildOf(FBoolProperty::StaticClass()) ||
-		PropertyClass->IsChildOf(FStrProperty::StaticClass()) || PropertyClass->IsChildOf(FNameProperty::StaticClass()))
+	if (PropertyClass->IsChildOf(FNumericProperty::StaticClass()) 
+		|| PropertyClass->IsChildOf(FBoolProperty::StaticClass())
+		|| PropertyClass->IsChildOf(FStrProperty::StaticClass()) 
+		|| PropertyClass->IsChildOf(FNameProperty::StaticClass()))
 	{
 		// Supported non-struct properties
 
@@ -1921,13 +2049,34 @@ FHoudiniGenericAttribute::GetAttributeTupleSizeAndStorageFromProperty(
 		{
 			OutAttributeStorageType = EAttribStorageType::STRING;
 		}
+		else if (PropertyClass->IsChildOf(FEnumProperty::StaticClass()))
+		{
+			OutAttributeStorageType = EAttribStorageType::INT;
+		}
 	}
 	else if (FStructProperty* StructProperty = CastField<FStructProperty>(InnerProperty))
 	{
 		// struct properties
 
 		const FName PropertyName = StructProperty->Struct->GetFName();
-		if (PropertyName == NAME_Vector)
+		if (PropertyName == NAME_Vector 
+			|| PropertyName == NAME_Vector3d 
+			|| PropertyName == NAME_Vector3f
+			|| PropertyName == "Vector_NetQuantize100")
+		{
+			OutAttributeTupleSize = 3;
+			OutAttributeStorageType = EAttribStorageType::FLOAT;
+		}
+		else if (PropertyName == NAME_Vector2D
+			|| PropertyName == NAME_Vector2d
+			|| PropertyName == NAME_Vector2f)
+		{
+			OutAttributeTupleSize = 2;
+			OutAttributeStorageType = EAttribStorageType::FLOAT;
+		}
+		else if (PropertyName == NAME_Rotator
+			|| PropertyName == NAME_Rotator3d
+			|| PropertyName == NAME_Rotator3f)
 		{
 			OutAttributeTupleSize = 3;
 			OutAttributeStorageType = EAttribStorageType::FLOAT;
@@ -2066,3 +2215,152 @@ FHoudiniEngineUtils::TryToFindInArrayProperty(
 	return false;
 }
 */
+
+bool 
+FHoudiniGenericAttribute::DumpGenericAttributeForProperty(FProperty* InProperty)
+{
+#if WITH_EDITOR
+	if (!InProperty)
+		return false;
+
+	// We will only dump the property types that are currently supported by the plugin
+	// for other indicate the unreal type
+	FProperty* DumpedProperty = InProperty;
+
+	bool bIsArrayProperty = false;
+	FArrayProperty* ArrayProperty = CastField<FArrayProperty>(InProperty);
+	TSharedPtr<FScriptArrayHelper_InContainer> ArrayHelper;
+	if (ArrayProperty)
+	{
+		bIsArrayProperty = true;
+		DumpedProperty = ArrayProperty->Inner;
+	}
+
+	FString HoudiniType;
+	int32 HoudiniTupleSize = 0;
+	
+	FFieldClass* PropertyClass = DumpedProperty->GetClass();
+	FString UnrealType = PropertyClass->GetName();
+	if (PropertyClass->IsChildOf(FNumericProperty::StaticClass()) 
+		|| PropertyClass->IsChildOf(FBoolProperty::StaticClass())
+		|| PropertyClass->IsChildOf(FEnumProperty::StaticClass())
+		|| PropertyClass->IsChildOf(FStrProperty::StaticClass()) 
+		|| PropertyClass->IsChildOf(FNameProperty::StaticClass()))
+	{
+		// Supported non-struct properties
+		HoudiniTupleSize = 1;
+
+		// Handle each property type that we support
+		if (PropertyClass->IsChildOf(FNumericProperty::StaticClass()))
+		{
+			// Numeric properties are supported as floats and ints, and can also be set from a received string
+			FNumericProperty* const Property = CastField<FNumericProperty>(DumpedProperty);
+			if (Property->IsFloatingPoint())
+			{
+				HoudiniType = FString("float");
+			}
+			else if (Property->IsInteger())
+			{
+				HoudiniType = FString("int");
+			}
+			else
+			{
+				// unsupported
+				//HoudiniType = FString("unknown");
+			}
+		}
+		else if (PropertyClass->IsChildOf(FBoolProperty::StaticClass()))
+		{
+			HoudiniType = FString("int");
+		}
+		else if (PropertyClass->IsChildOf(FStrProperty::StaticClass()))
+		{
+			HoudiniType = FString("string");
+		}
+		else if (PropertyClass->IsChildOf(FNameProperty::StaticClass()))
+		{
+			HoudiniType = FString("string");
+		}
+	}
+	else if (FStructProperty* StructProperty = CastField<FStructProperty>(DumpedProperty))
+	{
+		// struct properties
+		const FName PropertyName = StructProperty->Struct->GetFName();
+		UnrealType = PropertyName.ToString() + " (struct)";
+
+		if (PropertyName == NAME_Vector)
+		{
+			HoudiniTupleSize = 3;
+			HoudiniType = FString("float");
+		}
+		else if (PropertyName == NAME_Transform)
+		{
+			HoudiniTupleSize = 10;
+			HoudiniType = FString("float");
+		}
+		else if (PropertyName == NAME_Color)
+		{
+			HoudiniTupleSize = 4;
+			HoudiniType = FString("int");
+		}
+		else if (PropertyName == NAME_LinearColor)
+		{
+			HoudiniTupleSize = 4;
+			HoudiniType = FString("float");
+		}
+		else if (PropertyName == "Int32Interval")
+		{
+			HoudiniTupleSize = 2;
+			HoudiniType = FString("int");
+		}
+		else if (PropertyName == "FloatInterval")
+		{
+			HoudiniTupleSize = 2;
+			HoudiniType = FString("float");
+		}
+		else
+		{
+			// unsupported
+		}
+	}
+	else if (FObjectProperty* ObjectProperty = CastField<FObjectProperty>(DumpedProperty))
+	{
+		HoudiniTupleSize = 1;
+		HoudiniType = FString("string");
+		UnrealType = PropertyClass->GetName();
+	}
+	else
+	{
+		// Property was found, but is of an unsupported type
+		UnrealType = PropertyClass->GetName();
+	}
+
+	FString ArrayString = bIsArrayProperty ? " array" : "";
+	FString Name = DumpedProperty->GetName();
+	FString DisplayName = DumpedProperty->GetDisplayNameText().ToString().Replace(TEXT(" "), TEXT(""));
+
+	if (HoudiniType.IsEmpty() || HoudiniTupleSize < 1)
+	{
+		// The property is not supported
+		// Just show the unreal names / types
+		HOUDINI_LOG_WARNING(TEXT("unreal_uproperty_%s : %s (%s) - UE TYPE: %s%s - unsupported."), *Name, *Name, *DisplayName, *UnrealType, *ArrayString);
+		return false;
+	}
+
+	// The property is supported
+	// Show both the unreal and houdini names / types
+	FString TupleString;
+	if (HoudiniTupleSize > 1)
+	{
+		if(HoudiniTupleSize < 5)
+			TupleString = FString::FromInt(HoudiniTupleSize);
+		else
+			TupleString = "(tuple " + FString::FromInt(HoudiniTupleSize) + ")";
+	}
+
+	HOUDINI_LOG_MESSAGE(TEXT("unreal_uproperty_%s : %s (%s) - UE TYPE: %s%s - H TYPE: %s%s."), *Name, *Name, *DisplayName, *UnrealType, *ArrayString, *HoudiniType, *TupleString);
+#endif
+
+	return true;
+}
+

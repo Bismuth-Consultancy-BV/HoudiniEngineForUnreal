@@ -78,6 +78,17 @@ public:
 	FORCEINLINE
 	bool IsColorRampEvent() { return !bIsFloatRamp; };
 
+	FORCEINLINE
+	void SetPosition(float Position) { InsertPosition = Position; }
+
+	FORCEINLINE
+	void SetValue(float Value) { InsertFloat = Value; }
+
+	FORCEINLINE
+	void SetValue(FLinearColor Value) { InsertColor = Value; }
+
+	FORCEINLINE
+	void SetInterpolation(EHoudiniRampInterpolationType Interpolation) { InsertInterpolation = Interpolation; }
 
 private:
 	UPROPERTY()
@@ -325,6 +336,12 @@ public:
 	static UHoudiniParameterRampColor * Create(
 		UObject* Outer,
 		const FString& ParamName);
+
+	FORCEINLINE
+	bool IsCaching() const { return bCaching; };
+
+	FORCEINLINE
+	void SetCaching(const bool bInCaching) { bCaching = bInCaching; };
 
 	virtual void CopyStateFrom(UHoudiniParameter* InParameter, bool bCopyAllProperties, EObjectFlags InClearFlags=RF_NoFlags, EObjectFlags InSetFlags=RF_NoFlags) override;
 

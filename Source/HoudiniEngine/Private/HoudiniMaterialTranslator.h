@@ -178,7 +178,8 @@ public:
 		TMap<FHoudiniMaterialIdentifier, UMaterialInterface *>& OutMaterials,
 		TArray<UPackage*>& OutPackages,
 		const bool& bForceRecookAll,
-		bool bInTreatExistingMaterialsAsUpToDate=false);
+		bool bInTreatExistingMaterialsAsUpToDate=false,
+		bool bAddDefaultMaterial=true);
 
 	//
 	static bool CreateMaterialInstances(

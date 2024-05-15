@@ -52,6 +52,7 @@
 #include "HoudiniSplineComponentVisualizer.h"
 #include "HoudiniToolsEditor.h"
 #include "HoudiniToolsPackageAsset.h"
+#include "HoudiniToolsRuntimeUtils.h"
 #include "SHoudiniToolsPanel.h"
 #include "SHoudiniNodeSyncPanel.h"
 #include "UnrealMeshTranslator.h"
@@ -624,6 +625,15 @@ FHoudiniEngineEditor::BindMenuCommands()
 		FCanExecuteAction::CreateLambda([]() { return true; }));
 
 	// Help and support
+	HEngineCommands->MapAction(
+		Commands._ContentExampleGit,
+		FExecuteAction::CreateLambda([]() { return FHoudiniEngineCommands::OpenContentExampleGit(); }),
+		FCanExecuteAction::CreateLambda([]() { return true; }));
+
+	HEngineCommands->MapAction(
+		Commands._ContentExampleBrowseTo,
+		FExecuteAction::CreateLambda([]() { return FHoudiniEngineCommands::BrowseToContentExamples(); }),
+		FCanExecuteAction::CreateLambda([]() { return FHoudiniEngineCommands::HasContentExamples(); }));
 
 	HEngineCommands->MapAction(
 		Commands._ReportBug,
@@ -732,12 +742,7 @@ FHoudiniEngineEditor::AddHoudiniFileMenuExtension(FMenuBuilder & MenuBuilder)
 	// Icons used by the commands are defined in the HoudiniEngineStyle
 	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._OpenInHoudini);
 	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._SaveHIPFile);
-	//MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._ReportBug);
 	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._CleanUpTempFolder);
-	//MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._BakeAll);
-	//MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._PauseAssetCooking);
-	//MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._RestartSession);
-	//MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._RefineAll);
 
 	MenuBuilder.EndSection();
 }
@@ -756,20 +761,6 @@ FHoudiniEngineEditor::AddHoudiniEditorMenu(FMenuBarBuilder& MenuBarBuilder)
 void
 FHoudiniEngineEditor::AddHoudiniMainMenuExtension(FMenuBuilder & MenuBuilder)
 {
-	/*
-	MenuBuilder.BeginSection("Houdini", LOCTEXT("HoudiniLabel", "Houdini Engine"));
-	// Icons used by the commands are defined in the HoudiniEngineStyle
-	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._OpenInHoudini);
-	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._SaveHIPFile);
-	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._ReportBug);
-	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._CleanUpTempFolder);
-	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._BakeAll);
-	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._PauseAssetCooking);
-	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._RestartSession);
-	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._RefineAll);
-	MenuBuilder.EndSection();
-	*/
-
 	MenuBuilder.BeginSection("Session", LOCTEXT("SessionLabel", "Session"));
 	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._CreateSession);
 	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._ConnectSession);
@@ -836,6 +827,9 @@ FHoudiniEngineEditor::AddHoudiniMainMenuExtension(FMenuBuilder & MenuBuilder)
 	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._OnlineDoc);
 	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._OnlineForum);
 	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._ReportBug);
+
+	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._ContentExampleGit);
+	MenuBuilder.AddMenuEntry(FHoudiniEngineCommands::Get()._ContentExampleBrowseTo);
 	MenuBuilder.EndSection();
 
 	MenuBuilder.BeginSection("Actions", LOCTEXT("ActionsLabel", "Actions"));
@@ -1021,6 +1015,9 @@ FHoudiniEngineEditor::InitializeWidgetResource()
 	HoudiniEnginePDGBakePackageReplaceModeOptionLabels.Add(MakeShareable(new FString(FHoudiniEngineEditor::GetStringFromPDGBakePackageReplaceModeOption(EPDGBakePackageReplaceModeOption::ReplaceExistingAssets))));
 	HoudiniEnginePDGBakePackageReplaceModeOptionLabels.Add(MakeShareable(new FString(FHoudiniEngineEditor::GetStringFromPDGBakePackageReplaceModeOption(EPDGBakePackageReplaceModeOption::CreateNewAssets))));
 	
+	HoudiniEngineBakeActorOptionsLabels.Reset();
+	HoudiniEngineBakeActorOptionsLabels.Add(MakeShareable(new FString(FHoudiniEngineEditor::GetStringfromActorBakeOption(EHoudiniEngineActorBakeOption::OneActorPerComponent))));
+	HoudiniEngineBakeActorOptionsLabels.Add(MakeShareable(new FString(FHoudiniEngineEditor::GetStringfromActorBakeOption(EHoudiniEngineActorBakeOption::OneActorPerHDA))));
 
 	static FString IconsDir = FHoudiniEngineUtils::GetHoudiniEnginePluginDir() / TEXT("Resources/Icons/");
 
@@ -1609,6 +1606,11 @@ FHoudiniEngineEditor::RegisterConsoleCommands()
 		TEXT("Clears all entries from the input manager."),
 		FConsoleCommandDelegate::CreateStatic(&FHoudiniEngineCommands::ClearInputManager));
 #endif
+
+	static FAutoConsoleCommand CCmdDumpGenericAttribute = FAutoConsoleCommand(
+		TEXT("Houdini.DumpGenericAttribute"),
+		TEXT("Outputs a list of all the generic property attribute for a given class."),
+		FConsoleCommandWithArgsDelegate::CreateStatic(&FHoudiniEngineCommands::DumpGenericAttribute));
 }
 
 void
@@ -1722,6 +1724,26 @@ FHoudiniEngineEditor::RegisterEditorDelegates()
 
 	OnDeleteActorsBegin = FEditorDelegates::OnDeleteActorsBegin.AddLambda([this](){ this->HandleOnDeleteActorsBegin(); });
 	OnDeleteActorsEnd = FEditorDelegates::OnDeleteActorsEnd.AddLambda([this](){ this-> HandleOnDeleteActorsEnd(); });
+
+	/*
+	//
+	// COMMENTED OUT! Unreal actually calls the delegate for all class, not just the specified owner
+	// so this actually prevents renaming for everything... 
+	//
+	// Add a rename prevention filter to HodiniToolsPackage
+	OnIsNameAllowed.BindLambda([](const FString& Name, FText* OutErrorMessage) -> bool
+		{
+			if (Name != FHoudiniToolsRuntimeUtils::GetPackageUAssetName())
+			{
+				*OutErrorMessage = FText::FromString("Renaming a HoudiniToolsPackage to anything but \"HoudiniToolsPackage\" is not supported.");
+				return false;
+			}
+
+			return true;
+		});
+	FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
+	AssetToolsModule.Get().RegisterIsNameAllowedDelegate("HoudiniToolsPackage", OnIsNameAllowed);
+	*/
 }
 
 void
@@ -1744,10 +1766,22 @@ FHoudiniEngineEditor::UnregisterEditorDelegates()
 
 	if (OnDeleteActorsEnd.IsValid())
 		FEditorDelegates::OnDeleteActorsEnd.Remove(OnDeleteActorsEnd);
+	
+	/*
+	// Unregister the ToolsPackage rename delegate
+	if (OnIsNameAllowed.IsBound())
+	{
+		FAssetToolsModule* AssetToolsModule = FModuleManager::GetModulePtr<FAssetToolsModule>("AssetTools");
+		if (AssetToolsModule)
+			AssetToolsModule->Get().UnregisterIsNameAllowedDelegate("HoudiniToolsPackage");
+
+		OnIsNameAllowed.Unbind();
+	}	
+	*/
 }
 
 FString 
-FHoudiniEngineEditor::GetStringFromHoudiniEngineBakeOption(const EHoudiniEngineBakeOption & BakeOption) 
+FHoudiniEngineEditor::GetStringFromHoudiniEngineBakeOption(EHoudiniEngineBakeOption BakeOption) 
 {
 	FString Str;
 	switch (BakeOption) 
@@ -1765,7 +1799,7 @@ FHoudiniEngineEditor::GetStringFromHoudiniEngineBakeOption(const EHoudiniEngineB
 }
 
 FString 
-FHoudiniEngineEditor::GetStringFromPDGBakeTargetOption(const EPDGBakeSelectionOption& BakeOption) 
+FHoudiniEngineEditor::GetStringFromPDGBakeTargetOption(EPDGBakeSelectionOption BakeOption) 
 {
 	FString Str;
 	switch (BakeOption) 
@@ -1787,7 +1821,35 @@ FHoudiniEngineEditor::GetStringFromPDGBakeTargetOption(const EPDGBakeSelectionOp
 }
 
 FString
-FHoudiniEngineEditor::GetStringFromPDGBakePackageReplaceModeOption(const EPDGBakePackageReplaceModeOption & InOption)
+FHoudiniEngineEditor::GetStringfromActorBakeOption(EHoudiniEngineActorBakeOption ActorBakeOption)
+{
+	FString Str;
+	switch(ActorBakeOption)
+	{
+	case EHoudiniEngineActorBakeOption::OneActorPerHDA:
+		Str = "One Actor Per HDA";
+		break;
+
+	case EHoudiniEngineActorBakeOption::OneActorPerComponent:
+		Str = "One Actor Per Component";
+		break;
+	}
+	return Str;
+}
+
+
+EHoudiniEngineActorBakeOption
+FHoudiniEngineEditor::StringToHoudiniEngineActorBakeOption(const FString& InString)
+{
+	if (InString == "One Actor Per HDA")
+		return  EHoudiniEngineActorBakeOption::OneActorPerHDA;
+	if (InString == "One Actor Per Component")
+		return  EHoudiniEngineActorBakeOption::OneActorPerComponent;
+	return EHoudiniEngineActorBakeOption::OneActorPerComponent;;
+}
+
+FString
+FHoudiniEngineEditor::GetStringFromPDGBakePackageReplaceModeOption(EPDGBakePackageReplaceModeOption InOption)
 {
 	FString Str;
 	switch (InOption)
@@ -1803,7 +1865,7 @@ FHoudiniEngineEditor::GetStringFromPDGBakePackageReplaceModeOption(const EPDGBak
 	return Str;
 }
 
-const EHoudiniEngineBakeOption 
+EHoudiniEngineBakeOption 
 FHoudiniEngineEditor::StringToHoudiniEngineBakeOption(const FString & InString) 
 {
 	if (InString == "Actor")
@@ -1815,7 +1877,7 @@ FHoudiniEngineEditor::StringToHoudiniEngineBakeOption(const FString & InString)
 	return EHoudiniEngineBakeOption::ToActor;
 }
 
-const EPDGBakeSelectionOption 
+EPDGBakeSelectionOption 
 FHoudiniEngineEditor::StringToPDGBakeSelectionOption(const FString& InString) 
 {
 	if (InString == "All Outputs")
@@ -1830,7 +1892,7 @@ FHoudiniEngineEditor::StringToPDGBakeSelectionOption(const FString& InString)
 	return EPDGBakeSelectionOption::All;
 }
 
-const EPDGBakePackageReplaceModeOption
+EPDGBakePackageReplaceModeOption
 FHoudiniEngineEditor::StringToPDGBakePackageReplaceModeOption(const FString & InString)
 {
 	if (InString == "Create New Assets")
@@ -1842,7 +1904,7 @@ FHoudiniEngineEditor::StringToPDGBakePackageReplaceModeOption(const FString & In
 	return EPDGBakePackageReplaceModeOption::ReplaceExistingAssets;
 }
 
-const EPackageReplaceMode
+EPackageReplaceMode
 FHoudiniEngineEditor::PDGBakePackageReplaceModeToPackageReplaceMode(const EPDGBakePackageReplaceModeOption& InReplaceMode)
 {
 	EPackageReplaceMode Mode;

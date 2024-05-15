@@ -46,29 +46,67 @@ UHoudiniParameterButtonStrip::Create(
 
 	HoudiniAssetParameter->SetParameterType(EHoudiniParameterType::ButtonStrip);
 
-	HoudiniAssetParameter->Count = 0;
-
 	return HoudiniAssetParameter;
 }
 
-FString * 
-UHoudiniParameterButtonStrip::GetStringLabelAt(const int32 & InIndex) 
+bool UHoudiniParameterButtonStrip::GetValueAt(const uint32 Index) const
 {
-	if (!Labels.IsValidIndex(InIndex))
-		return nullptr;
+	if (!Labels.IsValidIndex(Index))
+	{
+		return false;
+	}
 
-	return &(Labels[InIndex]);
+	switch (GetChoiceListType())
+	{
+	// Single Selection
+	case EHoudiniParameterChoiceListType::Normal:
+	case EHoudiniParameterChoiceListType::Mini:
+	case EHoudiniParameterChoiceListType::Replace:
+		return Value == Index;
+
+	// Multiple Selection
+	case EHoudiniParameterChoiceListType::Toggle:
+		// Multiple selection is implemented as bitmask
+		return (Value >> Index) & 1;
+
+	default:
+		return false;
+	}
 }
 
-bool 
-UHoudiniParameterButtonStrip::SetValueAt(const int32 & InIdx, int32 InVal) 
+bool UHoudiniParameterButtonStrip::SetValueAt(const bool InValue, const uint32 Index)
 {
-	if (!Values.IsValidIndex(InIdx))
+	if (!Labels.IsValidIndex(Index))
+	{
 		return false;
+	}
 
-	if (Values[InIdx] == InVal)
+	if (InValue == GetValueAt(Index))
+	{
 		return false;
+	}
 
-	Values[InIdx] = InVal;
+	switch (GetChoiceListType())
+	{
+	// Single Selection
+	case EHoudiniParameterChoiceListType::Normal:
+	case EHoudiniParameterChoiceListType::Mini:
+	case EHoudiniParameterChoiceListType::Replace:
+		Value = Index;
+		break;
+
+	// Multiple Selection
+	case EHoudiniParameterChoiceListType::Toggle:
+		// Multiple selection is implemented as bitmask
+		Value ^= (1U << Index);
+		break;
+
+	default:
+		// Button strip should have a choice list type.
+		// If it does not, this parameter was likely generated before choice list type was
+		// implemented, and thus was assigned default value of None.
+		return false;
+	}
+
 	return true;
 }

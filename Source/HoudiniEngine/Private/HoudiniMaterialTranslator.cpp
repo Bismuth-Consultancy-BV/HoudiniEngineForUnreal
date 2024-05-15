@@ -268,18 +268,19 @@ FHoudiniMaterialInfo::MakeIdentifier() const
 	);
 }
 
-bool 
+bool
 FHoudiniMaterialTranslator::CreateHoudiniMaterials(
 	const HAPI_NodeId& InAssetId,
 	const FHoudiniPackageParams& InPackageParams,
 	const TArray<int32>& InUniqueMaterialIds,
 	const TArray<HAPI_MaterialInfo>& InUniqueMaterialInfos,
-	const TMap<FHoudiniMaterialIdentifier, UMaterialInterface *>& InMaterials,
-	const TMap<FHoudiniMaterialIdentifier, UMaterialInterface *>& InAllOutputMaterials,
-	TMap<FHoudiniMaterialIdentifier, UMaterialInterface *>& OutMaterials,
+	const TMap<FHoudiniMaterialIdentifier, UMaterialInterface*>& InMaterials,
+	const TMap<FHoudiniMaterialIdentifier, UMaterialInterface*>& InAllOutputMaterials,
+	TMap<FHoudiniMaterialIdentifier, UMaterialInterface*>& OutMaterials,
 	TArray<UPackage*>& OutPackages,
 	const bool& bForceRecookAll,
-	bool bInTreatExistingMaterialsAsUpToDate)
+	bool bInTreatExistingMaterialsAsUpToDate,
+	bool bAddDefaultMaterial)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(TEXT("FHoudiniMaterialTranslator::CreateHoudiniMaterials"));
 
@@ -296,10 +297,13 @@ FHoudiniMaterialTranslator::CreateHoudiniMaterials(
 	FMaterialUpdateContext MaterialUpdateContext;
 
 	// Default Houdini material.
-	UMaterial * DefaultMaterial = FHoudiniEngine::Get().GetHoudiniDefaultMaterial().Get();
-	OutMaterials.Add(
-		FHoudiniMaterialIdentifier(HAPI_UNREAL_DEFAULT_MATERIAL_NAME, false),
-		DefaultMaterial);
+	if (bAddDefaultMaterial)
+	{
+		UMaterial* DefaultMaterial = FHoudiniEngine::Get().GetHoudiniDefaultMaterial().Get();
+		OutMaterials.Add(
+			FHoudiniMaterialIdentifier(HAPI_UNREAL_DEFAULT_MATERIAL_NAME, false),
+			DefaultMaterial);
+	}
 
 	// Factory to create materials.
 	UMaterialFactoryNew * MaterialFactory = NewObject<UMaterialFactoryNew>();
@@ -3932,9 +3936,9 @@ FHoudiniMaterialTranslator::GetAndValidateMaterialInstanceParameterValue(
 	OutMaterialParameterValue.ParamType = EHoudiniUnrealMaterialParameterType::Vector;
 	OutMaterialParameterValue.SetValue(NewLinearColor);
 	return true;
-#endif
-
+#else
 	return false;
+#endif
 }
 
 

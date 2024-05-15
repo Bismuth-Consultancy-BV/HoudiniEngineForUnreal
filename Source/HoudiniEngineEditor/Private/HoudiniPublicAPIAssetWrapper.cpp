@@ -279,12 +279,14 @@ UHoudiniPublicAPIAssetWrapper::BakeAllOutputs_Implementation()
 	if (!GetValidHoudiniAssetComponentWithError(HAC))
 		return false;
 
+	FHoudiniBakeSettings BakeSettings;
+	BakeSettings.SetFromHAC(HAC);
+
 	return FHoudiniEngineBakeUtils::BakeHoudiniAssetComponent(
 		HAC,
-		HAC->bReplacePreviousBake,
+		BakeSettings,
 		HAC->HoudiniEngineBakeOption,
-		HAC->bRemoveOutputAfterBake,
-		HAC->bRecenterBakedActors);
+		HAC->bRemoveOutputAfterBake);
 }
 
 bool
@@ -298,7 +300,12 @@ UHoudiniPublicAPIAssetWrapper::BakeAllOutputsWithSettings_Implementation(
 	if (!GetValidHoudiniAssetComponentWithError(HAC))
 		return false;
 
-	return FHoudiniEngineBakeUtils::BakeHoudiniAssetComponent(HAC, bInReplacePreviousBake, InBakeOption, bInRemoveTempOutputsOnSuccess, bInRecenterBakedActors);
+	FHoudiniBakeSettings BakeSettings;
+	BakeSettings.bReplaceActors = bInReplacePreviousBake;
+	BakeSettings.bReplaceAssets = bInReplacePreviousBake;
+	BakeSettings.bRecenterBakedActors = bInRecenterBakedActors;
+
+	return FHoudiniEngineBakeUtils::BakeHoudiniAssetComponent(HAC, BakeSettings, InBakeOption, bInRemoveTempOutputsOnSuccess);
 }
 
 bool
@@ -1599,7 +1606,7 @@ UHoudiniPublicAPIAssetWrapper::SetRampParameterNumPoints_Implementation(FName In
 
 		// Update the ramp's widget if it is currently visible/selected
 		const bool bForceFullUpdate = true;
-		FHoudiniEngineUtils::UpdateEditorProperties(Param, bForceFullUpdate);
+		FHoudiniEngineUtils::UpdateEditorProperties(bForceFullUpdate);
 	}
 	else
 	{
@@ -2004,7 +2011,7 @@ UHoudiniPublicAPIAssetWrapper::SetFloatRampParameterPoints_Implementation(
 	{
 		// Update the ramp's widget if it is currently visible/selected
 		const bool bForceFullUpdate = true;
-		FHoudiniEngineUtils::UpdateEditorProperties(Param, bForceFullUpdate);
+		FHoudiniEngineUtils::UpdateEditorProperties(bForceFullUpdate);
 	}
 	
 	return true;
@@ -2270,7 +2277,7 @@ UHoudiniPublicAPIAssetWrapper::SetColorRampParameterPoints_Implementation(
 	{
 		// Update the ramp's widget if it is currently visible/selected
 		const bool bForceFullUpdate = true;
-		FHoudiniEngineUtils::UpdateEditorProperties(Param, bForceFullUpdate);
+		FHoudiniEngineUtils::UpdateEditorProperties(bForceFullUpdate);
 	}
 
 	return true;
@@ -2938,7 +2945,11 @@ UHoudiniPublicAPIAssetWrapper::SetOutputBakeNameFallbackAt_Implementation(const 
 }
 
 bool
-UHoudiniPublicAPIAssetWrapper::BakeOutputObjectAt_Implementation(const int32 InIndex, const FHoudiniPublicAPIOutputObjectIdentifier& InIdentifier, const FName InBakeName, const EHoudiniLandscapeOutputBakeType InLandscapeBakeType)
+UHoudiniPublicAPIAssetWrapper::BakeOutputObjectAt_Implementation(
+	const int32 InIndex, 
+	const FHoudiniPublicAPIOutputObjectIdentifier& InIdentifier, 
+	const FName InBakeName, 
+	const EHoudiniLandscapeOutputBakeType InLandscapeBakeType)
 {
 	UHoudiniAssetComponent* HAC = nullptr;
 	if (!GetValidHoudiniAssetComponentWithError(HAC))
@@ -3024,6 +3035,10 @@ UHoudiniPublicAPIAssetWrapper::BakeOutputObjectAt_Implementation(const int32 InI
 	TArray<UHoudiniOutput*> AllOutputs;
 	HAC->GetOutputs(AllOutputs);
 
+	FHoudiniBakeSettings BakeSettings;
+	BakeSettings.SetFromHAC(HAC);
+
+	void SetFromHAC(UHoudiniAssetComponent * HAC);
 	FHoudiniOutputDetails::OnBakeOutputObject(
 		InBakeName.IsNone() ? OutputObject->BakeName : InBakeName.ToString(),
 		ObjectToBake,
@@ -3033,6 +3048,7 @@ UHoudiniPublicAPIAssetWrapper::BakeOutputObjectAt_Implementation(const int32 InI
 		HAC,
 		Output,
 		HAC->BakeFolder.Path,
+		BakeSettings,
 		HAC->TemporaryCookFolder.Path,
 		InLandscapeBakeType,
 		AllOutputs);
@@ -3192,9 +3208,7 @@ UHoudiniPublicAPIAssetWrapper::PDGCookOutputsForNetwork_Implementation(const FSt
 	if (!GetValidTOPNetworkByPathWithError(InNetworkRelativePath, NetworkIndex, TOPNet))
 		return false;
 
-	FHoudiniPDGManager::CookOutput(TOPNet);
-
-	return true;
+	return FHoudiniPDGManager::CookOutput(TOPNet);
 }
 
 bool
@@ -3206,9 +3220,7 @@ UHoudiniPublicAPIAssetWrapper::PDGCookNode_Implementation(const FString& InNetwo
 	if (!GetValidTOPNodeByPathWithError(InNetworkRelativePath, InNodeRelativePath, NetworkIndex, NodeIndex, TOPNode))
 		return false;
 
-	FHoudiniPDGManager::CookTOPNode(TOPNode);
-
-	return true;
+	return FHoudiniPDGManager::CookTOPNode(TOPNode);
 }
 
 bool
@@ -3995,7 +4007,7 @@ bool UHoudiniPublicAPIAssetWrapper::SetRampParameterPointValue(
 
 			// Update the ramp's widget if it is currently visible/selected
 			const bool bForceFullUpdate = true;
-			FHoudiniEngineUtils::UpdateEditorProperties(Param, bForceFullUpdate);
+			FHoudiniEngineUtils::UpdateEditorProperties(bForceFullUpdate);
 		}
 		else
 		{

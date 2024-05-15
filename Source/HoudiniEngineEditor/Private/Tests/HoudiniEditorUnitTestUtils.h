@@ -29,7 +29,19 @@
 #include "CoreMinimal.h"
 #include "HoudiniEditorAssetStateSubsystem.h"
 #include "HoudiniEditorTestUtils.h"
+#include "HoudiniEngineBakeUtils.h"
 #include "HoudiniOutput.h"
+#include "HoudiniStaticMesh.h"
+#include "HoudiniStaticMeshComponent.h"
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 3
+#include "GeometryCollection/GeometryCollectionActor.h"
+#include "GeometryCollection/GeometryCollectionComponent.h"
+#include "GeometryCollection/GeometryCollectionObject.h"
+#else
+#include "GeometryCollectionEngine/Public/GeometryCollection/GeometryCollectionActor.h"
+#include "GeometryCollectionEngine/Public/GeometryCollection/GeometryCollectionComponent.h"
+#include "GeometryCollectionEngine/Public/GeometryCollection/GeometryCollectionObject.h"	
+#endif
 
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
@@ -44,18 +56,22 @@ class UHoudiniAssetComponent;
 //  The tests that end with "ON_FAIL" can be used to specify a statement to be executed on failure,
 //  for example a continue, break or return statement.
 
-#define HOUDINI_TEST_EQUAL(A,B)	TestEqual(#A, A, B)
+#define HOUDINI_TEST_EQUAL(A,...)	TestEqual(#A, A, __VA_ARGS__)
 #define HOUDINI_TEST_EQUAL_ON_FAIL(A,B,_FAIL)	if (!TestEqual(#A, A, B)) _FAIL;
 #define HOUDINI_TEST_NOT_EQUAL(A,B)	TestNotEqual(#A, A, B)
 #define HOUDINI_TEST_NOT_EQUAL_ON_FAIL(A,B,_FAIL)	if (!TestNotEqual(#A, A, B)) _FAIL;
 #define HOUDINI_TEST_NOT_NULL(A)	TestNotNull(#A, A)
+#define HOUDINI_TEST_NOT_NULL_ON_FAIL(A, _FAIL)	if (!TestNotNull(#A, A) ) _FAIL;
+
 #define HOUDINI_TEST_NULL(A)	TestNull(#A, A)
 
 // Utils functions
 
 struct FHoudiniEditorUnitTestUtils
 {
-	static UHoudiniAssetComponent* LoadHDAIntoNewMap(const FString& PackageName, const FTransform& Transform);
+	static UHoudiniAssetComponent* LoadHDAIntoNewMap(const FString& PackageName, const FTransform& Transform, bool bOpenWorld);
+
+	static FString GetAbsolutePathOfProjectFile(const FString & Object);
 
 	// Helper function to returns components from an output.
 	template<typename COMPONENT_TYPE>
@@ -75,6 +91,43 @@ struct FHoudiniEditorUnitTestUtils
 						Results.Add(Out);
 					}
 				}
+			}
+		}
+		return  Results;
+	}
+
+	// Helper function to returns proxy mesh components from an output.
+	static inline TArray<UHoudiniStaticMeshComponent*>  GetOutputsWithProxyComponent(const TArray<UHoudiniOutput*>& Outputs)
+	{
+		TArray<UHoudiniStaticMeshComponent*> Results;
+
+		for (UHoudiniOutput* Output : Outputs)
+		{
+			for (auto& OutputObject : Output->GetOutputObjects())
+			{
+				if (OutputObject.Value.ProxyComponent != nullptr)
+				{
+					UObject * Ptr = OutputObject.Value.ProxyComponent;
+					UHoudiniStaticMeshComponent* ProxyMesh = Cast<UHoudiniStaticMeshComponent>(Ptr);
+					Results.Add(ProxyMesh);
+				}
+			}
+		}
+		return  Results;
+	}
+
+	// Helper function to returns components from a baked output.
+	template<typename COMPONENT_TYPE>
+	static TArray<COMPONENT_TYPE*>  GetOutputsWithComponent(const TArray<FHoudiniEngineBakedActor>& Outputs)
+	{
+		TArray<COMPONENT_TYPE*> Results;
+
+		for (const FHoudiniEngineBakedActor & Output : Outputs)
+		{
+			if (IsValid(Output.BakedComponent) && Output.BakedComponent->GetClass() == COMPONENT_TYPE::StaticClass())
+			{
+				COMPONENT_TYPE* Out = Cast<COMPONENT_TYPE>(Output.BakedComponent);
+				Results.Add(Out);
 			}
 		}
 		return  Results;
@@ -126,18 +179,81 @@ struct FHoudiniEditorUnitTestUtils
 		return  Results;
 	}
 
+	// Finds an actor by name.
 	static AActor* GetActorWithName(UWorld* World, FString& Name);
-	static bool IsHDAIdle(UHoudiniAssetComponent* HAC);
 
+	// Finds an HAC parameter of a specific class.
+	static UHoudiniParameter * GetTypedParameter(UHoudiniAssetComponent * HAC, UClass * Class, const char* Name);
 
+	// Finds an HAC parameter of a specific class.
+	template <typename TYPED_PARAMETER>
+	static TYPED_PARAMETER*  GetTypedParameter(UHoudiniAssetComponent* HAC, const char * Name)
+	{
+		return Cast<TYPED_PARAMETER>(GetTypedParameter(HAC, TYPED_PARAMETER::StaticClass(), Name));
+	}
+
+	// Returns only components on the exact type
+	template<typename COMPONENT>
+	static TArray<COMPONENT *> FilterComponents(const TArray<UActorComponent*> & Components)
+	{
+		TArray<COMPONENT *> Results;
+		for(auto Component : Components)
+		{
+			if (Component->GetClass() == COMPONENT::StaticClass())
+				Results.Add((COMPONENT*)Component);
+		}
+		return Results;
+	}
+
+	// Returns all the output actors in all the outputs.
+	static TArray<AActor*> GetOutputActors(TArray<FHoudiniBakedOutput>& BakedOutputs);
+
+	// Returns only the actors that are based off a given type.
+	template<typename ACTORCLASS>
+	static TArray<ACTORCLASS*> FilterActors(const TArray<AActor*> & Actors)
+	{
+		TArray<ACTORCLASS*> Results;
+		for(AActor * Actor : Actors)
+			if (Actor->IsA<ACTORCLASS>())
+				Results.Add(Cast<ACTORCLASS>(Actor));
+		return Results;
+	}
+
+	// Filters out those actors that have components of the given type.
+	template<typename COMPONENT_CLASS>
+	static TArray<AActor*> FilterActorsWithComponent(TArray<AActor*>& Actors)
+	{
+		TArray<AActor*> Results;
+		for (auto Actor : Actors)
+		{
+
+			TArray<UActorComponent*> Components;
+			Actor->GetComponents(Components);
+			for (auto Component : Components)
+			{
+				if (Component->IsA<COMPONENT_CLASS>())
+				{
+					Results.Add(Actor);
+					break;
+				}
+			}
+		}
+		return Results;
+	}
+
+	// Checks if an object was saved to the HAC's temp folder.
+	static bool IsTemporary(UHoudiniAssetComponent * HAC, const FString & ObjectPath);
 };
+
 
 // Helper macro to set parm, ensures the parameter is valid.
 #define SET_HDA_PARAMETER(_HAC, _PARAMETER_TYPE, _PARAMATER_NAME, _PARAMETER_VALUE, _PARAMETER_INDEX)\
 	{\
-		_PARAMETER_TYPE* __Parameter = Cast<_PARAMETER_TYPE>(_HAC->FindParameterByName(_PARAMATER_NAME));\
+		_PARAMETER_TYPE* __Parameter = FHoudiniEditorUnitTestUtils::GetTypedParameter<_PARAMETER_TYPE>(_HAC, _PARAMATER_NAME);\
 		if (!TestNotNull(#_PARAMATER_NAME, __Parameter))\
+		{\
 			return true;\
+		}\
 		__Parameter->SetValueAt(_PARAMETER_VALUE, _PARAMETER_INDEX);\
 	}
 
@@ -149,22 +265,42 @@ struct FHoudiniTestContext
 	//
 	// The "Data" map can be used to pass data between tests.
 	//
+	FHoudiniTestContext(FAutomationTestBase* CurrentTest,
+		const FString& HDAName,
+		const FTransform& Transform,
+		bool bOpenWorld);
 
-	FHoudiniTestContext(FAutomationTestBase* CurrentTest)
-	{
-		TimeStarted = FPlatformTime::Seconds();
-		Test = CurrentTest;
-	}
+	~FHoudiniTestContext();
 
+	// Starts cooking the HDA asynchrously.
 	void StartCookingHDA();
 
-	double MaxTime = 15.0f;						// Max time (seconds) this test can run.
+	// Starts cooking the Selected top network in the HDA asynchronously.
+	void StartCookingSelectedTOPNetwork();
+
+	void WaitForTicks(int Count);
+
+	//  Check if the context is valid. This will be false if, for example, the HDA failed to load.
+	bool IsValid();
+
+	// Bakes the top network. Synchronous, returns the baked actors.
+	TArray<FHoudiniEngineBakedActor> BakeSelectedTopNetwork();
+
+	double MaxTime = 120.0f;						// Max time (seconds) this test can run.
 	double TimeStarted = 0.0f;					// Time this test started. Used to test for timeout.
 
 	FAutomationTestBase* Test = nullptr;		// Unit test underway
 	UHoudiniAssetComponent* HAC = nullptr;		// HAC being tested
 	TMap<FString, FString> Data;				// Use this to pass data between different tests.
 	bool bCookInProgress = false;
+	bool bPostOutputDelegateCalled = false;
+	bool bPDGCookInProgress = false;
+	bool bPDGPostCookDelegateCalled = false;
+	int WaitTickFrame = 0;
+
+private:
+	FDelegateHandle OutputDelegateHandle;
+
 };
 
 class FHoudiniLatentTestCommand : public FFunctionLatentCommand

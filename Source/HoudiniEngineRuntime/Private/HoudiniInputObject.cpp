@@ -2753,8 +2753,8 @@ bool UHoudiniInputLandscape::HasContentChanged(const FHoudiniInputObjectSettings
 FTransform
 UHoudiniInputLandscape::GetHoudiniObjectTransform() const
 {
-	FTransform T = Transform;
-	T.SetScale3D(FVector::OneVector);
+	ALandscapeProxy* LandscapeProxy = GetLandscapeProxy();
+	FTransform T = FHoudiniEngineRuntimeUtils::CalculateHoudiniLandscapeTransform(LandscapeProxy);
 	return T;
 }
 
@@ -2770,15 +2770,19 @@ UHoudiniInputLandscape::Update(UObject * InObject, const FHoudiniInputObjectSett
 	
 	Super::Update(InObject, InSettings);
 
-	ALandscapeProxy* Landscape = Cast<ALandscapeProxy>(InObject);
-
-	//ensure(Landscape);
-
-	if (Landscape)
+	ALandscapeProxy* LandscapeProxy = Cast<ALandscapeProxy>(InObject);
+	if (LandscapeProxy)
 	{
-		Transform = FHoudiniEngineRuntimeUtils::CalculateHoudiniLandscapeTransform(Landscape);
+		Transform = LandscapeProxy->GetActorTransform();
 		CachedNumLandscapeComponents = CountLandscapeComponents();
 	}
+}
+
+void UHoudiniInputLandscape::MarkTransformChanged(const bool bInChanged)
+{
+	// Landscape transforms aren't just set on one node in Houdini,
+	// so if the actor transform has changed, update all nodes.
+	MarkChanged(true);	
 }
 
 bool UHoudiniInputLandscape::HasActorTransformChanged() const
@@ -2789,13 +2793,11 @@ bool UHoudiniInputLandscape::HasActorTransformChanged() const
 	if (HasComponentsTransformChanged())
 		return true;
 
-	// We replace the root component transform comparison, with a transform that is calculated, for Houdini, based
-	// on the currently loaded tiles.
 	ALandscapeProxy* LandscapeProxy = GetLandscapeProxy();
 	if (IsValid(LandscapeProxy))
 	{
-		const FTransform HoudiniTransform = FHoudiniEngineRuntimeUtils::CalculateHoudiniLandscapeTransform(LandscapeProxy);
-		if (!Transform.Equals(HoudiniTransform))
+		const FTransform ActorTransform = LandscapeProxy->GetActorTransform();
+		if (!Transform.Equals(ActorTransform))
 		{
 			return true;
 		}
@@ -3210,8 +3212,8 @@ UHoudiniInputObject::GetInputObjectTypeFromObject(UObject* InObject)
 			return EHoudiniInputObjectType::Object;
 		}
 	}
-
-	return EHoudiniInputObjectType::Invalid;
+	// unreachable
+	// return EHoudiniInputObjectType::Invalid;
 }
 
 
@@ -3544,22 +3546,23 @@ UHoudiniInputObject::GetChangedObjectsAndValidNodes(TArray<UHoudiniInputObject*>
 	{
 		// Has changed, needs to be recreated
 		OutChangedObjects.Add(this);
-
 		return true;
 	}
 	
 	if (UsesInputObjectNode())
 	{
-		if (GetInputObjectNodeId() >= 0)
+		// Do not use InputObjectNodeId directly here! 
+		// This can cause issues when dealing with InputActors
+		int32 InObjNodeId = GetInputObjectNodeId();
+		if (InObjNodeId >= 0)
 		{
 			// No changes, keep it
-			OutNodeIdsOfUnchangedValidObjects.Add(InputObjectNodeId);
+			OutNodeIdsOfUnchangedValidObjects.Add(InObjNodeId);
 		}
 		else
 		{
 			// Needs, but does not have, a current HAPI input node
 			OutChangedObjects.Add(this);
-
 			return true;
 		}
 	}

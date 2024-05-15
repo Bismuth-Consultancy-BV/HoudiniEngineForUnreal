@@ -3222,41 +3222,20 @@ FHoudiniEngineUtils::IsHoudiniAssetComponentCooking(UObject* InObj)
 }
 
 void
-FHoudiniEngineUtils::UpdateEditorProperties(UObject* InObjectToUpdate, const bool& InForceFullUpdate)
+FHoudiniEngineUtils::UpdateEditorProperties(const bool bInForceFullUpdate)
 {
-	TArray<UObject*> ObjectsToUpdate;
-	ObjectsToUpdate.Add(InObjectToUpdate);
-
 	if (!IsInGameThread())
 	{
 		// We need to be in the game thread to trigger editor properties update
-		AsyncTask(ENamedThreads::GameThread, [ObjectsToUpdate, InForceFullUpdate]()
+		AsyncTask(ENamedThreads::GameThread, [bInForceFullUpdate]()
 		{
-			FHoudiniEngineUtils::UpdateEditorProperties_Internal(ObjectsToUpdate, InForceFullUpdate);
+			FHoudiniEngineUtils::UpdateEditorProperties_Internal(bInForceFullUpdate);
 		});
 	}
 	else
 	{
 		// We're in the game thread, no need  for an async task
-		FHoudiniEngineUtils::UpdateEditorProperties_Internal(ObjectsToUpdate, InForceFullUpdate);
-	}
-}
-
-void
-FHoudiniEngineUtils::UpdateEditorProperties(TArray<UObject*> ObjectsToUpdate, const bool& InForceFullUpdate)
-{
-	if (!IsInGameThread())
-	{
-		// We need to be in the game thread to trigger editor properties update
-		AsyncTask(ENamedThreads::GameThread, [ObjectsToUpdate, InForceFullUpdate]()
-		{
-			FHoudiniEngineUtils::UpdateEditorProperties_Internal(ObjectsToUpdate, InForceFullUpdate);
-		});
-	}
-	else
-	{
-		// We're in the game thread, no need  for an async task
-		FHoudiniEngineUtils::UpdateEditorProperties_Internal(ObjectsToUpdate, InForceFullUpdate);
+		FHoudiniEngineUtils::UpdateEditorProperties_Internal(bInForceFullUpdate);
 	}
 }
 
@@ -3278,169 +3257,188 @@ void FHoudiniEngineUtils::UpdateBlueprintEditor(UHoudiniAssetComponent* HAC)
 }
 
 void
-FHoudiniEngineUtils::UpdateEditorProperties_Internal(TArray<UObject*> ObjectsToUpdate, const bool& bInForceFullUpdate)
+FHoudiniEngineUtils::UpdateEditorProperties_Internal(const bool bInForceFullUpdate)
 {
-	// TODO: Don't use this method. Prefer using IDetailLayoutBuilder::ForceRefreshDetails(). 
-	// Example to correctly update details panel through IDetailCategoryBuilder / IDetailLayoutBuilder
-	// IDetailCategoryBuilder &CategoryBuilder = StructBuilder.GetParentCategory();
-    // IDetailLayoutBuilder &LayoutBuilder = CategoryBuilder.GetParentLayout();
-    // LayoutBuilder.ForceRefreshDetails();
-	// However, the above code should only be called during UI functions... for now, the following works:
+#if WITH_EDITOR
+#define HOUDINI_USE_DETAILS_FOCUS_HACK 1
 
-	FPropertyEditorModule& PropertyEditorModule = FModuleManager::GetModuleChecked<FPropertyEditorModule>("PropertyEditor");
-	PropertyEditorModule.NotifyCustomizationModuleChanged();
+	// TODO: As an optimization, it might be worth adding an extra parameter to control if we 
+	// update floating property windows. We need to do this whenever we update something visible in
+	// actor details, such as adding/removing a component.
+	if (GUnrealEd)
+	{
+		GUnrealEd->UpdateFloatingPropertyWindows();
+	}
 
-#if WITH_EDITOR	
 	if (!bInForceFullUpdate)
 	{
 		// bNeedFullUpdate is false only when small changes (parameters value) have been made
-		// We do not reselect the actor to avoid loosing the currently selected parameter
-		if(GUnrealEd)
-			GUnrealEd->UpdateFloatingPropertyWindows();
-
+		// We do not refresh the details view to avoid loosing the currently selected parameter
 		return;
 	}
 
-	// We now want to get all the components/actors owning the objects to update
-	TArray<USceneComponent*> AllSceneComponents;
-	for (auto CurrentObject : ObjectsToUpdate)
+	// Get the property editor module
+	FPropertyEditorModule& PropertyModule =
+		FModuleManager::Get().GetModuleChecked<FPropertyEditorModule>("PropertyEditor");
+
+	//
+	// We want to iterate over all the details panels.
+	// Note that Unreal can have up to 4 of them open at once!
+	//
+	// TODO: These shouldn't be hardcoded strings, but when building on Mac, we get linking errors
+	//       when trying to use LevelEditorTabIds::LevelEditorSelectionDetails
+	//
+	static const FName DetailsTabIdentifiers[] = {
+		"LevelEditorSelectionDetails",
+		"LevelEditorSelectionDetails2",
+		"LevelEditorSelectionDetails3",
+		"LevelEditorSelectionDetails4" };
+
+	for (const FName DetailsPanelName : DetailsTabIdentifiers)
 	{
-		if (!IsValid(CurrentObject))
+		// Locate the details panel.
+		TSharedPtr<IDetailsView> DetailsView = PropertyModule.FindDetailView(DetailsPanelName);
+
+		if (!DetailsView.IsValid())
+		{
+			// We have no details panel, nothing to update.
 			continue;
-
-		// In some case, the object itself is the component
-		USceneComponent* SceneComp = Cast<USceneComponent>(CurrentObject);
-		if (!SceneComp)
-		{
-			SceneComp = Cast<USceneComponent>(CurrentObject->GetOuter());
 		}
 
-		if (IsValid(SceneComp))
+#if HOUDINI_USE_DETAILS_FOCUS_HACK
+		//
+		// Unreal does not maintain focus on the currently focused widget after refreshing the 
+		// details view. Since we are constantly refreshing the details view when tweaking 
+		// parameters, users cannot navigate the UI via keyboard.
+		//
+		// HACK: Attach meta data to parameter widgets to make them identifiable. Before triggering
+		//       a refresh, save the meta data of the currently focused widget. Then restore focus
+		//       on the newly created widget using this meta data.
+		//
+
+		TSharedPtr<FHoudiniParameterWidgetMetaData> ParameterWidgetMetaData = 
+			GetFocusedParameterWidgetMetaData(DetailsView);
+#endif // HOUDINI_USE_DETAILS_FOCUS_HACK
+
+		DetailsView->ForceRefresh();
+
+#if HOUDINI_USE_DETAILS_FOCUS_HACK
+		if (ParameterWidgetMetaData.IsValid())
 		{
-			AllSceneComponents.Add(SceneComp);
-			continue;
+			FocusUsingParameterWidgetMetaData(
+				DetailsView.ToSharedRef(),
+				*ParameterWidgetMetaData);
 		}
+#endif // HOUDINI_USE_DETAILS_FOCUS_HACK
 	}
-
-	TArray<AActor*> AllActors;
-	for (auto CurrentSceneComp : AllSceneComponents)
-	{
-		if (!IsValid(CurrentSceneComp))
-			continue;
-
-		AActor* Actor = CurrentSceneComp->GetOwner();
-		if (IsValid(Actor))
-			AllActors.Add(Actor);
-	}
-
-	// Updating the editor properties can be done in two ways, depending if we're in the BP editor or not
-	// If we have a parent actor, we're not in the BP Editor, so update via the property editor module
-	if (AllActors.Num() > 0)
-	{
-		// Get the property editor module
-		FPropertyEditorModule& PropertyModule =
-			FModuleManager::Get().GetModuleChecked< FPropertyEditorModule >("PropertyEditor");
-
-		// This will actually force a refresh of all the details view
-		//PropertyModule.NotifyCustomizationModuleChanged();
-
-		TArray<UObject*> SelectedActors;
-		for (auto Actor : AllActors)
-		{
-			if (Actor && Actor->IsSelected())
-				SelectedActors.Add(Actor);
-		}
-
-		if (SelectedActors.Num() > 0)
-		{
-			PropertyModule.UpdatePropertyViews(SelectedActors);
-		}
-
-		// We want to iterate on all the details panel
-		static const FName DetailsTabIdentifiers[] =
-		{
-			"LevelEditorSelectionDetails",
-			"LevelEditorSelectionDetails2",
-			"LevelEditorSelectionDetails3",
-			"LevelEditorSelectionDetails4"
-		};
-
-		for (const FName& DetailsPanelName : DetailsTabIdentifiers)
-		{
-			// Locate the details panel.
-			TSharedPtr<IDetailsView> DetailsView = PropertyModule.FindDetailView(DetailsPanelName);
-			if (!DetailsView.IsValid())
-			{
-				// We have no details panel, nothing to update.
-				continue;
-			}
-
-			// Get the selected actors for this details panels and check if one of ours belongs to it
-			const TArray<TWeakObjectPtr<AActor>>& SelectedDetailActors = DetailsView->GetSelectedActors();
-			bool bFoundActor = false;
-			for (int32 ActorIdx = 0; ActorIdx < SelectedDetailActors.Num(); ActorIdx++)
-			{
-				TWeakObjectPtr<AActor> SelectedActor = SelectedDetailActors[ActorIdx];
-				if (SelectedActor.IsValid() && AllActors.Contains(SelectedActor.Get()))
-				{
-					bFoundActor = true;
-					break;
-				}
-			}
-			
-			// None of our actors belongs to this detail panel, no need to update it
-			if (!bFoundActor)
-				continue;
-
-			// Refresh that details panels using its current selection
-			TArray<UObject*> Selection;
-			for (auto DetailsActor : SelectedDetailActors)
-			{
-				if (DetailsActor.IsValid())
-					Selection.Add(DetailsActor.Get());
-			}
-
-			// Reset selected actors, force refresh and override the lock.
-			DetailsView->SetObjects(SelectedActors, bInForceFullUpdate, true);
-
-			if (GUnrealEd)
-				GUnrealEd->UpdateFloatingPropertyWindows();
-		}
-	}
-	else
-	{
-		// TODO: Do we need to do Blueprint Editor updates here or can we confine it to "post output processing"?
-		
-	}
-
-	/*
-	// Reset the full update flag
-	if (bNeedFullUpdate)
-		HAC->SetEditorPropertiesNeedFullUpdate(false);
-	*/
-
-	return;
-#endif
+#endif // WITH_EDITOR
 }
 
-void FHoudiniEngineUtils::UpdateBlueprintEditor_Internal(UHoudiniAssetComponent* HAC)
+TSharedPtr<FHoudiniParameterWidgetMetaData> 
+FHoudiniEngineUtils::GetFocusedParameterWidgetMetaData(TSharedPtr<IDetailsView> DetailsView)
 {
-	//UHoudiniAssetComponent* HACTemplate = HAC->GetCachedTemplate();
-	//UBlueprintGeneratedClass* OwnerBPClass = Cast<UBlueprintGeneratedClass>(HACTemplate->GetOuter());
-	//if (!OwnerBPClass)
-	//	return;
+#if WITH_EDITOR
+	if (!DetailsView.IsValid())
+	{
+		return nullptr;
+	}
 
-	///*
-	//FBlueprintEditor* BlueprintEditor = static_cast<FBlueprintEditor*>(FAssetEditorManager::Get().FindEditorForAsset(OwnerBPClass->ClassGeneratedBy, false));
-	//if (!BlueprintEditor)
-	//	return;
-	//*/
+	TSharedPtr<SWidget> FocusedWidget = FSlateApplication::Get().GetKeyboardFocusedWidget();
 
-	//// Close the mesh editor to prevent crashing. Reopen it after the mesh has been built.
-	//UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
-	//FBlueprintEditor* BlueprintEditor = static_cast<FBlueprintEditor*>(AssetEditorSubsystem->FindEditorForAsset(OwnerBPClass->ClassGeneratedBy, false));
-	//if (!BlueprintEditor)
-	//	return;
+	if (FocusedWidget.IsValid())
+	{
+		// Before we grab the meta data of the focused widget, we want to make sure that it is
+		// inside our details view. To do this, check if any of its ancestors are the current
+		// details view.
+		for (auto Widget = FocusedWidget; Widget.IsValid(); Widget = Widget->GetParentWidget())
+		{
+			if (Widget == DetailsView)
+			{
+				return FocusedWidget->GetMetaData<FHoudiniParameterWidgetMetaData>();
+			}
+		}
+	}
+#endif // WITH_EDITOR
+
+	return nullptr;
+}
+
+bool 
+FHoudiniEngineUtils::FocusUsingParameterWidgetMetaData(
+	TSharedRef<SWidget> AncestorWidget, 
+	const FHoudiniParameterWidgetMetaData& ParameterWidgetMetaData)
+{
+#if WITH_EDITOR
+	//
+	// HACK: Manually tick the widget before accessing its children. We need to do this because
+	//       refreshing a details view will only mark the child detail tree as dirty, without
+	//       actually adding the newly created widgets as children.
+	//
+	//       - See SDetailsViewBase::RefreshTree which requests the refresh.
+	//       - See STableViewBase::Tick which actually does the refresh.
+	//
+	//       As a result, Slate cannot construct a path to the new widgets we wish to focus, since
+	//       before the tick, the widgets in our detail rows do not have a parent.
+	//
+	//       Unfortunately there doesn't seem to be a way to subscribe to a "post tick" event in
+	//       Slate, so we resort to manually ticking these widgets.
+	//
+	//       We could also manually tick the entire Slate application, however we cannot control the
+	//       delta time this way and this introduces a delay before the new widget is re-focused.
+	//
+	//       We use cached widget geometry with the hope that it is correct.
+	//
+	AncestorWidget->Tick(AncestorWidget->GetTickSpaceGeometry(), 0.f, 0.f);
+
+	// Important: We use GetAllChildren and not GetChildren. 
+	// Widgets might choose to not expose some of their children via GetChildren.
+	FChildren* const Children = AncestorWidget->GetAllChildren();
+
+	for (int32 i = 0; i < Children->Num(); ++i)
+	{
+		const TSharedRef<SWidget> Child = Children->GetChildAt(i);
+		const TSharedPtr ChildMetaData = Child->GetMetaData<FHoudiniParameterWidgetMetaData>();
+
+		if (ChildMetaData.IsValid() && ParameterWidgetMetaData == *ChildMetaData)
+		{
+			TSharedPtr<SWidget> WidgetToSelect = Child;
+
+			//
+			// Try focus the desired widget.
+			// - If this fails, it is possible that Slate cannot construct a path to it.
+			// - However, usually the parent can be focused. 
+			// - Thus we go over all ancestors to try focus them.
+			//
+			// TODO: Explore the possibility of constructing the path to the widget manually.
+			//       Maybe this would allow focusing widgets that currently cannot not be focused.
+			//
+			while (WidgetToSelect.IsValid())
+			{
+				if (FSlateApplication::Get().SetKeyboardFocus(WidgetToSelect))
+				{
+					return true;
+				}
+
+				WidgetToSelect = Child->GetParentWidget();
+			}
+
+			return false; // Failed to reselect keyboard focused widget!
+
+		}
+
+		if (FocusUsingParameterWidgetMetaData(Child, ParameterWidgetMetaData))
+		{
+			return true;
+		}
+	}
+#endif // WITH_EDITOR
+
+	return false;
+}
+
+void
+FHoudiniEngineUtils::UpdateBlueprintEditor_Internal(UHoudiniAssetComponent* HAC)
+{
 	FBlueprintEditor* BlueprintEditor = FHoudiniEngineRuntimeUtils::GetBlueprintEditor(HAC);
 	if (!BlueprintEditor)
 		return;
@@ -3459,6 +3457,7 @@ void FHoudiniEngineUtils::UpdateBlueprintEditor_Internal(UHoudiniAssetComponent*
 			
 	// Also somehow reselect ?
 }
+
 HAPI_Result
 FHoudiniEngineUtils::HapiSetAttributeFloatData(
 	const TArray<float>& InFloatData,
@@ -3474,6 +3473,7 @@ FHoudiniEngineUtils::HapiSetAttributeFloatData(
     return FHoudiniEngineUtils::HapiSetAttributeFloatData(InFloatData.GetData(), InNodeId, InPartId, InAttributeName,
                                                           InAttributeInfo, bAttemptRunLengthEncoding);
 }
+
 
 HAPI_Result
 FHoudiniEngineUtils::HapiSetAttributeFloatData(
@@ -3513,7 +3513,6 @@ FHoudiniEngineUtils::HapiSetAttributeFloatData(
 			return HAPI_RESULT_SUCCESS;
 		}
 	}
-
 
 	int32 ChunkSize = THRIFT_MAX_CHUNKSIZE / InAttributeInfo.tupleSize;
 	if (InAttributeInfo.count > ChunkSize)
@@ -5630,6 +5629,12 @@ bool FHoudiniEngineUtils::HapiGetAttributeIntOrIntArray(const HAPI_NodeId& GeoId
 		FHoudiniEngine::Get().GetSession(),
 		GeoId, PartId,
 		TCHAR_TO_UTF8(*AttribName), AttributeOwner, &OutAttributeInfo), false);
+
+	if (!OutAttributeInfo.exists)
+	{
+		OutData.SetNum(0);
+		return false;
+	}
 
 	if (OutAttributeInfo.storage == HAPI_STORAGETYPE_INT)
 	{
@@ -8527,6 +8532,8 @@ FHoudiniEngineUtils::MoveActorToLevel(AActor* InActor, ULevel* InDesiredLevel)
 bool
 FHoudiniEngineUtils::HapiCookNode(const HAPI_NodeId& InNodeId, HAPI_CookOptions* InCookOptions, const bool& bWaitForCompletion)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(FHoudiniEngineUtils::HapiCookNode);
+
 	// Check for an invalid node id
 	if (InNodeId < 0)
 		return false;
@@ -8854,5 +8861,6 @@ FHoudiniEngineUtils::ForceDeleteObject(UObject* Object)
 	if (bDeleteSucceeded)
 		CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS, true);
 }
+
 
 #undef LOCTEXT_NAMESPACE

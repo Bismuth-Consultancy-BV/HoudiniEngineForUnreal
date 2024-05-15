@@ -45,11 +45,16 @@
 #define HAPI_UNREAL_DESIRED_ROW_FULL_WIDGET_WIDTH               310
 #define HAPI_UNREAL_DESIRED_SETTINGS_ROW_VALUE_WIDGET_WIDTH     350
 #define HAPI_UNREAL_DESIRED_SETTINGS_ROW_FULL_WIDGET_WIDTH      400
+#define HAPI_UNREAL_PADDING_HORIZONTAL_JOIN                     10
 
  // URL used for bug reporting.
 #define HAPI_UNREAL_BUG_REPORT_URL								TEXT("https://www.sidefx.com/bugs/submit/")
 #define HAPI_UNREAL_ONLINE_DOC_URL								TEXT("https://www.sidefx.com/docs/unreal/")
 #define HAPI_UNREAL_ONLINE_FORUM_URL							TEXT("https://www.sidefx.com/forum/51/")
+
+// URL used for the content examples
+#define HAPI_UNREAL_CONTENT_EXAMPLES_URL                        TEXT("https://github.com/sideeffects/HoudiniEngineForUnreal-ContentExamples")
+#define HAPI_UNREAL_CONTENT_EXAMPLES__RELEASE_URL               TEXT("https://github.com/sideeffects/HoudiniEngineForUnreal-ContentExamples/releases")
 
 
 // UI Category Names
@@ -194,6 +199,26 @@ static const FSlateBrush* _GetBrush(FName PropertyName)
     return FAppStyle::GetBrush(PropertyName);
 #else
     return FEditorStyle::GetBrush(PropertyName);
+#endif
+}
+
+// Wrapper to manage code compatibility across multiple UE versions
+static const FMargin _GetMargin(FName PropertyName)
+{
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION > 0
+    return FAppStyle::GetMargin(PropertyName);
+#else
+    return FEditorStyle::GetMargin(PropertyName);
+#endif
+}
+
+// Wrapper to manage code compatibility across multiple UE versions
+static const float _GetFloat(FName PropertyName)
+{
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION > 0
+    return FAppStyle::GetFloat(PropertyName);
+#else
+    return FEditorStyle::GetFloat(PropertyName);
 #endif
 }
 

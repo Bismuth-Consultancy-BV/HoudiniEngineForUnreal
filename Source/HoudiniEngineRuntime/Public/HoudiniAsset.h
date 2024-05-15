@@ -27,10 +27,14 @@
 #pragma once
 
 #include "UObject/Object.h"
+#include "Runtime/Launch/Resources/Version.h"
 #include "HoudiniAsset.generated.h"
 
 class UAssetImportData;
 class UHoudiniToolData;
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
+class FAssetRegistryTagsContext;
+#endif
 
 UCLASS(BlueprintType, EditInlineNew, config = Engine)
 class HOUDINIENGINERUNTIME_API UHoudiniAsset : public UObject
@@ -44,7 +48,10 @@ class HOUDINIENGINERUNTIME_API UHoudiniAsset : public UObject
 		// UOBject functions
 		virtual void FinishDestroy() override;
 		virtual void Serialize(FArchive & Ar) override;
-		virtual void GetAssetRegistryTags(TArray< FAssetRegistryTag > & OutTags) const override;
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
+		virtual void GetAssetRegistryTags(FAssetRegistryTagsContext Context) const override;
+#endif
+		virtual void GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const override;
 
 		// Creates and initialize this asset from a given buffer / file.
 		void CreateAsset(const uint8 * BufferStart, const uint8 * BufferEnd, const FString & InFileName);

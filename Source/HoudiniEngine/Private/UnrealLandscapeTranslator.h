@@ -34,6 +34,13 @@ class UHoudiniInputLandscape;
 class FUnrealObjectInputHandle;
 class UHoudiniInput;
 
+struct FHoudiniLandscapeExportOptions
+{
+	bool bExportHeightDataPerEditLayer;
+	bool bExportPaintLayersPerEditLayer;
+	bool bExportMergedPaintLayers;
+};
+
 struct HOUDINIENGINE_API FUnrealLandscapeTranslator 
 {
 	public:
@@ -43,17 +50,16 @@ struct HOUDINIENGINE_API FUnrealLandscapeTranslator
 		// ------------------------------------------------------------------------------------------
 		static bool CreateHeightfieldFromLandscape(
 			ALandscapeProxy* LandcapeProxy,
-			bool bExportEditLayers,
-			bool bExportPaintLayers,
+			const FHoudiniLandscapeExportOptions & Options,
 			HAPI_NodeId& CreatedHeightfieldNodeId,
 			const FString &InputNodeNameStr,
-			const HAPI_NodeId& ParentNodeId,
+			HAPI_NodeId ParentNodeId,
 			bool bSetObjectTransformToWorldTransform);
 
 		static bool CreateHeightfieldFromLandscapeComponentArray(
 			ALandscapeProxy* LandscapeProxy,
 			const TSet< ULandscapeComponent * > & SelectedComponents,
-			bool bExportEditLayers,
+			const FHoudiniLandscapeExportOptions& Options,
 			HAPI_NodeId& CreatedHeightfieldNodeId,
 			const FString &InputNodeNameStr,
 			const HAPI_NodeId& ParentNodeId,
@@ -66,7 +72,7 @@ struct HOUDINIENGINE_API FUnrealLandscapeTranslator
 			HAPI_NodeId& HeightFieldId,
 			HAPI_NodeId& MergeId,
 			int32& MergeInputIndex,
-			bool bExportPerLayerData,
+			const FHoudiniLandscapeExportOptions& Options,
 			const FString& InputNodeNameStr,
 			const FTransform & ParentTransform,
 			const HAPI_NodeId& ParentNodeId);
@@ -76,7 +82,6 @@ struct HOUDINIENGINE_API FUnrealLandscapeTranslator
 			const FString& InputNodeNameStr,
 			const FString& HeightFieldName,
 			const FTransform& LandscapeTransform,
-			FVector& CenterOffset,
 			HAPI_NodeId& HeightId,
 			HAPI_PartId& PartId,
 			HAPI_NodeId& HeightFieldId,
@@ -123,16 +128,15 @@ struct HOUDINIENGINE_API FUnrealLandscapeTranslator
 			FVector3d& Origin, FVector3d& Extents);
 
 		// Converts Unreal uint16 values to Houdini Float
-		static bool ConvertLandscapeDataToHeightfieldData(
+		static bool ConvertLandscapeDataToHeightFieldData(
 			const TArray<uint16>& IntHeightData,
-			const int32& XSize,
-			const int32& YSize,
+			int32 XSize,
+			int32 YSize,
 			FVector Min,
 			FVector Max,
-			const FTransform& LandscapeTransform,
+			const FTransform& LandscapeActorTransform,
 			TArray<float>& HeightfieldFloatValues,
-			HAPI_VolumeInfo& HeightfieldVolumeInfo,
-			FVector& CenterOffset);
+			HAPI_VolumeInfo& HeightfieldVolumeInfo);
 
 		// Converts Unreal uint8 values to Houdini Float
 		static bool ConvertLandscapeLayerDataToHeightfieldData(
@@ -150,7 +154,7 @@ struct HOUDINIENGINE_API FUnrealLandscapeTranslator
 			HAPI_NodeId& HeightNodeId,
 			HAPI_NodeId& MaskNodeId,
 			HAPI_NodeId& MergeNodeId,
-			const HAPI_NodeId& ParentNodeId);
+			HAPI_NodeId ParentNodeId);
 
 		// Set the volume float value for a heightfield
 		static bool SetHeightfieldData(
@@ -325,7 +329,7 @@ struct HOUDINIENGINE_API FUnrealLandscapeTranslator
 			HAPI_PartId PartId,
 			HAPI_NodeId MergeId,
 			HAPI_NodeId MaskId,
-			bool bExportPerLayerData,
+			const FHoudiniLandscapeExportOptions& Options,
 			const HAPI_VolumeInfo& HeightfieldVolumeInfo,
 			int32 XSize,
 			int32 YSize,

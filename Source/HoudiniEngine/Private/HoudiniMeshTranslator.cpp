@@ -175,9 +175,6 @@ FHoudiniMeshTranslator::CreateOrUpdateAllComponents(
 	if (!IsValid(InOutput))
 		return false;
 
-	if (!IsValid(InOuterComponent))
-		return false;
-
 	TMap<FHoudiniOutputObjectIdentifier, FHoudiniOutputObject> OldOutputObjects = InOutput->GetOutputObjects();
 
 	// Remove Static Meshes and their components from the old map 
@@ -293,6 +290,15 @@ FHoudiniMeshTranslator::CreateOrUpdateAllComponents(
 		StaleComponents.Empty();
 	}
 	*/
+
+	// Exit early if we have no component to update
+	if (!IsValid(InOuterComponent))
+	{
+		// Assign the new output objects to the output
+		InOutput->SetOutputObjects(InNewOutputObjects);
+
+		return true;
+	}
 
 	// Now create/update the new static mesh components
 	for (auto& NewPair : InNewOutputObjects)
@@ -1644,6 +1650,10 @@ FHoudiniMeshTranslator::UpdateStaticMeshNaniteSettings(const int32& GeoId, const
 
 	if (FloatData.Num() > 0)
 	{
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 3
+		// If a nanite percent triangles attribute was found, we likely also want to set the fallback target to PercentTriangles
+		StaticMesh->NaniteSettings.FallbackTarget = ENaniteFallbackTarget::PercentTriangles;
+#endif
 		StaticMesh->NaniteSettings.FallbackPercentTriangles = FMath::Clamp<float>(FloatData[0], 0.0f, 1.0f);
 	}
 
@@ -1664,6 +1674,10 @@ FHoudiniMeshTranslator::UpdateStaticMeshNaniteSettings(const int32& GeoId, const
 
 	if (FloatData.Num() > 0)
 	{
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 3
+		// If a nanite relative error attribute was found, we likely also want to set the fallback target to RelativeError
+		StaticMesh->NaniteSettings.FallbackTarget = ENaniteFallbackTarget::RelativeError;
+#endif
 		StaticMesh->NaniteSettings.FallbackRelativeError = FMath::Clamp<float>(FloatData[0], 0.0f, 1.0f);
 	}
 
@@ -4185,13 +4199,19 @@ FHoudiniMeshTranslator::CreateStaticMesh_MeshDescription()
 								if (FoundMaterial)
 									MaterialInterface = *FoundMaterial;
 
-								// See if we have a replacement material and use it on the mesh instead
-								UMaterialInterface * const *ReplacementMaterialInterface = ReplacementMaterials.Find(DefaultMatIdentifier);
-								if (ReplacementMaterialInterface && *ReplacementMaterialInterface)
-									MaterialInterface = *ReplacementMaterialInterface;
+								if (MaterialInterface)
+								{
+									// Make sure this material is in the assignments before replacing it.
+									OutputAssignmentMaterials.Add(MaterialIdentifier, MaterialInterface);
 
-								// Map the Houdini ID to the unreal one
-								MapHoudiniMatIdToUnrealInterface.Add(MaterialId, MaterialInterface);
+									// See if we have a replacement material and use it on the mesh instead
+									UMaterialInterface* const* ReplacementMaterialInterface = ReplacementMaterials.Find(DefaultMatIdentifier);
+									if (ReplacementMaterialInterface && *ReplacementMaterialInterface)
+										MaterialInterface = *ReplacementMaterialInterface;
+
+									// Map the Houdini ID to the unreal one
+									MapHoudiniMatIdToUnrealInterface.Add(MaterialId, MaterialInterface);
+								}
 							}
 						}
 					}
@@ -5908,13 +5928,6 @@ FHoudiniMeshTranslator::CreateNeededMaterials()
 		false, 
 		bTreatExistingMaterialsAsUpToDate);
 
-	/*
-	// Save the created packages if needed
-	// DPT: deactivated, only dirty for now, as we'll save them when saving the world.
-	if (MaterialAndTexturePackages.Num() > 0)
-		FEditorFileUtils::PromptForCheckoutAndSave(MaterialAndTexturePackages, true, false);
-	*/
-
 	if (bMaterialOverrideNeedsCreateInstance && PartFaceMaterialOverrides.Num() > 0)
 	{
 		// Map containing unique face materials override attribute
@@ -6685,7 +6698,7 @@ FHoudiniMeshTranslator::TryToFindPropertyOnSourceModel(
 {
 	bool bFoundProperty = false;
 	FHoudiniGenericAttribute::TryToFindProperty(
-		&InSourceModel, InSourceModel.StaticStruct(), InPropertyName, InPropertyChain, OutFoundProperty, bFoundProperty, OutContainer);
+		&InSourceModel, InSourceModel.StaticStruct(), InPropertyName, InPropertyChain, OutFoundProperty, bFoundProperty, OutContainer, false);
 	return bFoundProperty;
 }
 

@@ -57,12 +57,14 @@ UHoudiniEditorAssetStateSubsystem::NotifyOfHoudiniAssetStateChange(UObject* InHo
 	// If we went from PostCook -> PreProcess, the cook was successful, and auto bake is enabled, auto bake!
 	if (InFromState == EHoudiniAssetState::PostCook && InToState == EHoudiniAssetState::PreProcess && HAC->WasLastCookSuccessful() && HAC->IsBakeAfterNextCookEnabled())
 	{
+		FHoudiniBakeSettings BakeSettings;
+		BakeSettings.SetFromHAC(HAC);
+		
 		FHoudiniEngineBakeUtils::BakeHoudiniAssetComponent(
 			HAC,
-			HAC->bReplacePreviousBake,
+			BakeSettings,
 			HAC->HoudiniEngineBakeOption,
-			HAC->bRemoveOutputAfterBake,
-			HAC->bRecenterBakedActors);
+			HAC->bRemoveOutputAfterBake);
 
 		if (HAC->GetBakeAfterNextCook() == EHoudiniBakeAfterNextCook::Once)
 			HAC->SetBakeAfterNextCook(EHoudiniBakeAfterNextCook::Disabled);

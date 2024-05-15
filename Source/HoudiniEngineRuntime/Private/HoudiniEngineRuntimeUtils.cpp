@@ -518,9 +518,23 @@ FHoudiniEngineRuntimeUtils::MarkBlueprintAsModified(UActorComponent* ComponentTe
 FTransform 
 FHoudiniEngineRuntimeUtils::CalculateHoudiniLandscapeTransform(ALandscapeProxy* LandscapeProxy)
 {
-
-	if (!IsValid(LandscapeProxy))
-		return FTransform::Identity;
+	// This function calculates the transform of the geometry node which contains the height field SOPs
+	// that represent the Unreal landscape.
+	//
+	// The transform contains the rotation and translation, but not the scale as this is applied to the
+	// individual volume nodes. Trying to apply the scale here causes off issues in Houdini, it really
+	// needs to be specified on the height field.
+	//
+	// Note that the location of the Unreal transform is in the center of the landscape
+	// whereas its in the center in Houdini.
+	//
+	// In addition, this function takes into account that not all landscape streaming proxies are loaded
+	// at one time in World Partition. If a subset of the landscape is loaded then only that part of the
+	// landscape is loaded into Houdini.
+	//
+	// For example if there are 4x4 streaming proxies, and only the center 2x2 proxies
+	// are loaded then a height field representing the 2x2 proxies loaded. If one of those 2x2 proxies is not
+	// loaded the landscape of size 2x2 is still created, but the height/masks are set to default values.
 
 #if WITH_EDITOR
 	FTransform OutTransform = LandscapeProxy->GetTransform();	
@@ -583,7 +597,7 @@ FHoudiniEngineRuntimeUtils::CalculateHoudiniLandscapeTransform(ALandscapeProxy* 
 	// Apply the rotated offset to the transform's position
 	FVector3d Loc = OutTransform.GetLocation() + RotScaledOffset;
 	OutTransform.SetLocation(Loc);
-
+	OutTransform.SetScale3D(FVector3d::One());
 	return OutTransform;
 #else
 	return FTransform::Identity;
@@ -875,4 +889,18 @@ FHoudiniEngineRuntimeUtils::SetHoudiniHomeEnvironmentVariable()
 		return;
 
 	FPlatformMisc::SetEnvironmentVar(TEXT("HOME"), CustomHoudiniHomeLocationPath.GetCharArray().GetData());
+}
+
+UClass*
+FHoudiniEngineRuntimeUtils::GetClassByName(const FString& InName)
+{
+	if (InName.IsEmpty())
+		return nullptr;
+
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1
+	// UE5.1 deprecated ANY_PACKAGE, using a null outer doesn't work so use FindFirstObject instead
+	return FindFirstObject<UClass>(*InName, EFindFirstObjectOptions::NativeFirst);
+#else
+	return FindObject<UClass>(ANY_PACKAGE, *InName);
+#endif
 }

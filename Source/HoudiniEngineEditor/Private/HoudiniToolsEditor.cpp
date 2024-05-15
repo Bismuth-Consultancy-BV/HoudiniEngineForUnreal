@@ -26,35 +26,15 @@
 
 #include "HoudiniToolsEditor.h"
 
-#include "AssetViewUtils.h"
-#include "HoudiniEngineEditorPrivatePCH.h"
-
-#include "Editor.h"
-#include "EditorReimportHandler.h"
-#include "GameProjectUtils.h"
 #include "HoudiniAsset.h"
 #include "HoudiniAssetActor.h"
 #include "HoudiniAssetComponent.h"
 #include "HoudiniAssetFactory.h"
 #include "HoudiniEngine.h"
 #include "HoudiniEngineEditor.h"
+#include "HoudiniEngineEditorPrivatePCH.h"
 #include "HoudiniEngineEditorSettings.h"
 #include "HoudiniEngineEditorUtils.h"
-#include "HoudiniToolsPackageAsset.h"
-#include "HoudiniToolsPackageAssetFactory.h"
-#include "ObjectTools.h"
-#include "PackageTools.h"
-#include "ScopedTransaction.h"
-#include "AssetRegistry/AssetRegistryModule.h"
-#include "EditorFramework/AssetImportData.h"
-#include "HAL/FileManager.h"
-#include "HAL/PlatformFileManager.h"
-#include "Misc/FileHelper.h"
-#include "Misc/Paths.h"
-#include "Modules/ModuleManager.h"
-#include "Serialization/JsonReader.h"
-#include "Serialization/JsonSerializer.h"
-#include "HoudiniToolsRuntimeUtils.h"
 #include "HoudiniEngineRuntimeUtils.h"
 #include "HoudiniParameter.h"
 #include "HoudiniParameterColor.h"
@@ -65,15 +45,34 @@
 #include "HoudiniParameterRamp.h"
 #include "HoudiniParameterString.h"
 #include "HoudiniPreset.h"
+#include "HoudiniToolsPackageAsset.h"
+#include "HoudiniToolsPackageAssetFactory.h"
+#include "HoudiniToolsRuntimeUtils.h"
 #include "HoudiniToolTypesEditor.h"
-#include "PropertyEditorModule.h"
-#include "Selection.h"
+
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetViewUtils.h"
+#include "Editor.h"
+#include "EditorFramework/AssetImportData.h"
+#include "EditorReimportHandler.h"
+#include "Engine/Texture2D.h"
 #include "Framework/Application/SlateApplication.h"
+#include "GameProjectUtils.h"
+#include "HAL/FileManager.h"
+#include "HAL/PlatformFileManager.h"
 #include "Interfaces/IMainFrameModule.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "Modules/ModuleManager.h"
+#include "ObjectTools.h"
+#include "PackageTools.h"
+#include "PropertyEditorModule.h"
+#include "ScopedTransaction.h"
+#include "Selection.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SUniformGridPanel.h"
-#include "Framework/Application/SlateApplication.h"
-#include "PropertyEditorModule.h"
 
 #if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1
 	#include "Subsystems/EditorAssetSubsystem.h"
@@ -81,7 +80,7 @@
 	#include "EditorAssetLibrary.h"
 #endif
 
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 3
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 2
 	#include "TextureResource.h"
 #endif
 
@@ -466,7 +465,12 @@ FHoudiniToolsEditor::FindOwningToolsPackage(const UObject* Object)
 {
 	if (!IsValid(Object))
 		return nullptr;
-	
+
+	// No need to load/find Tools package while cooking or running a commandlet
+	// This would only generate unneeded warnings
+	if (IsRunningCommandlet() || IsRunningCookCommandlet() || GIsCookerLoadingPackage)
+		return nullptr;
+
 	FString CurrentPath = FPaths::GetPath(Object->GetPathName());
 
 	// Define a depth limit to break out of the loop, in case something
@@ -880,8 +884,13 @@ FHoudiniToolsEditor::PopulateHoudiniTool(const TSharedPtr<FHoudiniTool>& Houdini
 
 UHoudiniToolsPackageAsset* FHoudiniToolsEditor::LoadHoudiniToolsPackage(const FString& PackageBasePath)
 {
+	// No need to load/find Tools package while cooking or running a commandlet
+	// This would only generate unneeded warnings
+	if (IsRunningCommandlet() || IsRunningCookCommandlet() || GIsCookerLoadingPackage)
+		return nullptr;
+
 	const FString PkgPath = FPaths::Combine(PackageBasePath, FString::Format(TEXT("{0}.{0}"), { FHoudiniToolsRuntimeUtils::GetPackageUAssetName() }) );
-	return LoadObject<UHoudiniToolsPackageAsset>(nullptr, *PkgPath);
+	return LoadObject<UHoudiniToolsPackageAsset>(nullptr, *PkgPath);	
 }
 
 bool FHoudiniToolsEditor::ExcludeToolFromPackageCategory(UObject* Object, const FString& CategoryName, bool bAddCategoryIfMissing)
@@ -1421,7 +1430,7 @@ FHoudiniToolsEditor::GetHoudiniToolDescriptionFromJSON(const FString& JsonFilePa
 	if (JSONObject->HasField(TEXT("target")))
 	{
 		IsCompatible = false;
-		TArray<TSharedPtr<FJsonValue> >TargetArray = JSONObject->GetArrayField("target");
+		TArray<TSharedPtr<FJsonValue> >TargetArray = JSONObject->GetArrayField(TEXT("target"));
 		for (TSharedPtr<FJsonValue> TargetValue : TargetArray)
 		{
 			if ( !TargetValue.IsValid() )

@@ -111,6 +111,26 @@ UHoudiniToolsPackageAsset::PostSaveRoot(FObjectPostSaveRootContext ObjectSaveCon
 		}
 	}
 }
-
 #endif
+
+bool
+UHoudiniToolsPackageAsset::Rename(const TCHAR* InName, UObject* NewOuter, ERenameFlags Flags)
+{
+#if WITH_EDITOR
+	// Warn if the name is incorrect
+	if (InName != FHoudiniToolsRuntimeUtils::GetPackageUAssetName()) //&& Flags != REN_Test)
+	{
+		if (!FHoudiniToolsRuntimeUtils::ShowToolsPackageRenameConfirmDialog())
+		{
+			return false;
+		}
+	}		
+#endif
+
+	// Proceed with the renaming, but add a warning for good measure	
+	HOUDINI_LOG_WARNING(TEXT("Renaming a HoudiniToolsPackage to anything but \"HoudiniToolsPackage\" disables it."));
+
+	return Super::Rename(InName, NewOuter, Flags);
+}
+
 

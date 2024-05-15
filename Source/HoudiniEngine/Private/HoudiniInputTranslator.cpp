@@ -1876,45 +1876,9 @@ FHoudiniInputTranslator::UploadHoudiniInputTransform(
 	
 		case EHoudiniInputObjectType::Landscape:
 		{
-			//
-			UHoudiniInputLandscape* InputLandscape = Cast<UHoudiniInputLandscape>(InInputObject);
-			if (!IsValid(InputLandscape))
-			{
+			const FTransform NewTransform = InInputObject->GetHoudiniObjectTransform();
+			if (!UpdateTransform(InInputObject->GetHoudiniObjectTransform(), InInputObject->GetInputObjectNodeId()))
 				bSuccess = false;
-				break;
-			}
-
-			// 
-			ALandscapeProxy* Landscape = InputLandscape->GetLandscapeProxy();
-			if (!IsValid(Landscape))
-			{
-				bSuccess = false;
-				break;
-			}
-
-			// // Only apply diff for landscape since the HF's transform is used for value conversion as well
-			// FTransform CurrentTransform = InputLandscape->Transform;
-			// const FTransform NewTransform = Landscape->ActorToWorld();
-			
-			const FTransform NewTransform = FHoudiniEngineRuntimeUtils::CalculateHoudiniLandscapeTransform(Landscape);
-
-			// Convert back to a HAPI Transform and update the HF's transform
-			HAPI_TransformEuler NewHAPITransform;
-			FHoudiniApi::TransformEuler_Init(&NewHAPITransform);
-			// FHoudiniEngineUtils::TranslateUnrealTransform(HFTransform, NewHAPITransform);
-			FHoudiniEngineUtils::TranslateUnrealTransform(
-				FTransform(NewTransform.GetRotation(), NewTransform.GetTranslation(), FVector::OneVector), NewHAPITransform);
-			// NewHAPITransform.position[1] = 0.0f;
-			if (HAPI_RESULT_SUCCESS != FHoudiniApi::SetObjectTransform(
-				FHoudiniEngine::Get().GetSession(),
-				InputLandscape->GetInputObjectNodeId(), &NewHAPITransform))
-			{
-				bSuccess = false;
-				break;
-			}
-
-			// Update the cached transform
-			InputLandscape->SetTransform(NewTransform);
 		}
 
 		case EHoudiniInputObjectType::Brush:
@@ -3044,12 +3008,13 @@ FHoudiniInputTranslator::HapiCreateInputNodeForSceneComponent(
 	// Get the parent Actor's transform
 	FTransform ParentTransform = InObject->ActorTransform;
 
-	// Dont do that!
+	// Don't do that!
 	return false;
-
+	/*
 	// TODO
 	// Support this type of input object
 	return HapiCreateInputNodeForObject(InObjNodeName, InObject);
+	*/
 }
 
 bool
@@ -4271,10 +4236,10 @@ FHoudiniInputTranslator::HapiCreateInputNodeForLandscape(
 
 	if (bUseRefCountedInputSystem)
 	{
-		const TSet<ULandscapeComponent*> SelectedLandscapeComponents = InInput->GetLandscapeSelectedComponents();
-		const FUnrealObjectInputOptions Options = FUnrealObjectInputOptions::MakeOptionsForLandscapeActor(
-			InputSettings, &SelectedLandscapeComponents);
-		const FUnrealObjectInputIdentifier LandscapeInputNodeId(Landscape, Options, false);
+		TSet<ULandscapeComponent*> SelectedLandscapeComponents = InInput->GetLandscapeSelectedComponents();
+		FUnrealObjectInputOptions Options = FUnrealObjectInputOptions::MakeOptionsForLandscapeActor(InputSettings, &SelectedLandscapeComponents);
+		FUnrealObjectInputIdentifier LandscapeInputNodeId(Landscape, Options, false);
+
 		Handles.Add(InputNodeHandle);
 		FUnrealObjectInputUtils::CreateOrUpdateReferenceInputMergeNode(LandscapeInputNodeId, Handles, InObject->InputNodeHandle);
 		if (!HapiSetGeoObjectTransform(InObject->GetInputObjectNodeId(), Transform))
@@ -4474,9 +4439,7 @@ FHoudiniInputTranslator::UpdateWorldInput(UHoudiniInput* InInput)
 	if (!IsValid(InInput))
 		return false;
 
-
 	EHoudiniInputType WorldType = InInput->GetInputType();
-
 	if (WorldType != EHoudiniInputType::World)
 		return false;
 
@@ -4533,13 +4496,21 @@ FHoudiniInputTranslator::UpdateWorldInput(UHoudiniInput* InInput)
 			continue;
 		}
 
+		// If we send our input objects as references, we should recreate the whole input node for 
+		// a transform change (as the transform is stored as a point attribute, not as a geo/object transform)
+		bool bImportAsRef = InInput->GetImportAsReference();
+
 		// We'll keep track of whether the actor transform changed so that
 		// we can mark all the components as having changed transforms -- everything
 		// needs to be updated.
 		bool bActorTransformChanged = false;
 		if (ActorObject->HasActorTransformChanged())
 		{
-			ActorObject->MarkTransformChanged(true);
+			if (bImportAsRef)
+				ActorObject->MarkChanged(true);
+			else
+				ActorObject->MarkTransformChanged(true);
+
 			bHasChanged = true;
 			bActorTransformChanged = true;
 		}	
@@ -4558,7 +4529,11 @@ FHoudiniInputTranslator::UpdateWorldInput(UHoudiniInput* InInput)
 		{
 			if (bActorTransformChanged || CurActorComp->HasComponentTransformChanged())
 			{
-				CurActorComp->MarkTransformChanged(true);
+				if (bImportAsRef)
+					CurActorComp->MarkChanged(true);
+				else
+					CurActorComp->MarkTransformChanged(true);
+
 				bHasChanged = true;
 			}
 
@@ -4604,7 +4579,8 @@ FHoudiniInputTranslator::UpdateWorldInput(UHoudiniInput* InInput)
 		InInput->MarkChanged(true);
 
 		// Mark the outer package as dirty, to ensure that the changes are saved when using OFPA / World partition
-		InInput->MarkPackageDirty();
+		//InInput->MarkPackageDirty();
+
 	}
 
 	return true;

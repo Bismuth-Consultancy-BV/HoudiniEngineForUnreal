@@ -44,25 +44,49 @@ public:
 		UObject* InOuter,
 		const FString& InParamName);
 
-	UPROPERTY()
-	int32 Count;
+	// Accessor
+	bool GetValueAt(const uint32 Index) const;
+
+	FString* GetStringLabelAt(const uint32 Index)
+	{
+		return Labels.IsValidIndex(Index) ? &(Labels[Index]) : nullptr;
+	}
+
+	const FString* GetStringLabelAt(const uint32 Index) const
+	{
+		return Labels.IsValidIndex(Index) ? &(Labels[Index]) : nullptr;
+	}
+
+	int32* GetValuesPtr() { return reinterpret_cast<int32*>(&Value); }
+
+	bool IsDefault() const override { return DefaultValue == Value; }
+
+	// Mutators
+	bool SetValueAt(const bool InValue, const uint32 Index);
+
+	/**
+	 * @warning Depending on this parameters choice list type, the value is interpreted differently
+	 *          by Houdini. That is, if it is single selection, then the value is an index of the
+	 *          current selection. If it is multiple selection, then the value is a bitmask of the
+	 *          selected values.
+	 */
+	void SetValue(const uint32 InValue) { Value = InValue; }
+
+	void SetNumberOfValues(const uint32 InNumValues) { Labels.SetNum(InNumValues); }
+
+	uint32 GetNumValues() const { return Labels.Num(); }
+
+	void SetDefaultValues() { DefaultValue = Value; }
+
+protected:
 
 	UPROPERTY()
 	TArray<FString> Labels;
 
+	/** See @ref SetValue */
 	UPROPERTY()
-	TArray<int32> Values;
+	uint32 Value;
 
-
-	void InitializeLabels(const int32 & InSize) { Labels.SetNumZeroed(InSize);  Values.SetNumZeroed(InSize); Count = InSize; };
-
-	bool SetValueAt(const int32 & InIdx, int32 InVal);
-
-
-	FString * GetStringLabelAt(const int32 & InIndex);
-
-	int32* GetValuesPtr() { return Values.Num() > 0 ? &Values[0] : nullptr; };
-
-
-
+	UPROPERTY()
+	uint32 DefaultValue;
 };

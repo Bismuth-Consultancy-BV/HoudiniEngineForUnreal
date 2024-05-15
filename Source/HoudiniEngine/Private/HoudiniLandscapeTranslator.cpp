@@ -394,17 +394,24 @@ TArray<FHoudiniHeightFieldPartData> FHoudiniLandscapeTranslator::GetPartsToTrans
 		//-----------------------------------------------------------------------------------------------------------------------------
 
 		// Start with the size of the height field Part.
-		PartData.SizeInfo.UnrealSize = FHoudiniLandscapeUtils::GetVolumeDimensionsInUnrealSpace(PartObj);
+		PartData.SizeInfo.UnrealGridDimensions = FHoudiniLandscapeUtils::GetVolumeDimensionsInUnrealSpace(PartObj);
 
 		// If we have a tile, use the specified size to override.
 		if (PartData.TileInfo.IsSet())
-			PartData.SizeInfo.UnrealSize = PartData.TileInfo.GetValue().LandscapeDimensions;
+			PartData.SizeInfo.UnrealGridDimensions = PartData.TileInfo.GetValue().LandscapeDimensions;
 
 		// Determine Quads Per section and Num Sections Per Component if they were not specified.
 		if (PartData.SizeInfo.NumQuadsPerSection == 0 || PartData.SizeInfo.NumSectionsPerComponent == 0)
 		{
-			FHoudiniLandscapeUtils::CalcLandscapeSizeFromHeightFieldSize(PartData.SizeInfo.UnrealSize.X, PartData.SizeInfo.UnrealSize.Y, PartData.SizeInfo);
+			FHoudiniLandscapeUtils::CalcLandscapeSizeFromHeightFieldSize(PartData.SizeInfo.UnrealGridDimensions.X, PartData.SizeInfo.UnrealGridDimensions.Y, PartData.SizeInfo);
 
+		}
+
+		// if the SizeInfo is invalid, print errors and exit.
+		if (PartData.SizeInfo.Validate())
+		{
+			HOUDINI_LOG_ERROR(TEXT("Skipping part %s as it has generated invalid Unreal size info."), *PartObj.VolumeName );
+			continue;
 		}
 
 		//-----------------------------------------------------------------------------------------------------------------------------
@@ -734,7 +741,9 @@ FHoudiniLandscapeTranslator::TranslateHeightFieldPart(
 
 	if (!Part.CachedData.IsValid())
 	{
-		HeightFieldData = FHoudiniLandscapeUtils::FetchVolumeInUnrealSpace(*Part.HeightField, LayerType == TargetLayerType::Height);
+		HeightFieldData = FHoudiniLandscapeUtils::FetchVolumeInUnrealSpace(*Part.HeightField, 
+			Part.SizeInfo.UnrealGridDimensions,
+			LayerType == TargetLayerType::Height);
 	}
 	else
 	{
@@ -846,7 +855,7 @@ FHoudiniLandscapeTranslator::TranslateHeightFieldPart(
 		// Quantized to 16-bit and set the data.
 		auto QuantizedData = FHoudiniLandscapeUtils::QuantizeNormalizedDataTo16Bit(HeightFieldData.Values);
 
-		FScopedSetLandscapeEditingLayer Scope(OutputLandscape, UnrealEditLayer->Guid, [&] { OutputLandscape->RequestLayersContentUpdate(ELandscapeLayerUpdateMode::Update_All); });
+		FScopedSetLandscapeEditingLayer Scope(OutputLandscape, UnrealEditLayer->Guid, [&] { OutputLandscape->ForceUpdateLayersContent(); });
 
 		FLandscapeEditDataInterface LandscapeEdit(TargetLandscapeInfo);
 		FHeightmapAccessor<false> HeightMapAccessor(TargetLandscapeInfo);
@@ -1174,6 +1183,33 @@ FHoudiniLandscapeTranslator::CalcHeightFieldsArrayGlobalZMinZMax(
 			}
 		}
 	}
+}
+
+bool FHoudiniLandscapeCreationInfo::Validate()
+{
+	bool bError = false;
+
+	if (this->NumQuadsPerSection == 0)
+	{
+		HOUDINI_LOG_ERROR(TEXT("Error creating landscape, NumQuadsPerSection is zero"));
+		bError = true;
+	}
+	if (this->NumSectionsPerComponent == 0)
+	{
+		HOUDINI_LOG_ERROR(TEXT("Error creating landscape, NumSectionsPerComponent is zero"));
+		bError = true;
+	}
+	if (this->UnrealGridDimensions.X == 0)
+	{
+		HOUDINI_LOG_ERROR(TEXT("Error creating landscape, X Size is zero"));
+		bError = true;
+	}
+	if (this->UnrealGridDimensions.Y == 0)
+	{
+		HOUDINI_LOG_ERROR(TEXT("Error creating landscape, Y Size is zero"));
+		bError = true;
+	}
+	return bError;
 }
 
 #undef LOCTEXT_NAMESPACE

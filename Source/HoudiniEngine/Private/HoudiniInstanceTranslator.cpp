@@ -69,6 +69,7 @@
 	#include "LevelEditorViewport.h"
 	#include "MeshPaintHelpers.h"
 #endif
+#include "HoudiniFoliageUtils.h"
 
 #define LOCTEXT_NAMESPACE HOUDINI_LOCTEXT_NAMESPACE
 
@@ -223,7 +224,7 @@ FHoudiniInstanceTranslator::CreateAllInstancersFromHoudiniOutputs(
 			for(auto & OutputComponent : OutputObject.Value.OutputComponents)
 			{
 				if (OutputComponent)
-			        FHoudiniFoliageTools::RemoveFoliageTypeFromWorld(OutputComponent->GetWorld(), OutputObject.Value.FoliageType);
+					FHoudiniFoliageUtils::RemoveFoliageTypeFromWorld(OutputComponent->GetWorld(), OutputObject.Value.FoliageType);
 			}
 		}
 
@@ -1600,12 +1601,8 @@ FHoudiniInstanceTranslator::GetAttributeInstancerObjectsAndTransforms(
 		if (!AttributeObject)
 		{
 			// See if the ref is a class that we can instantiate
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1
-			// UE5.1 deprecated ANY_PACKAGE, using a null outer doesn't work so use FindFirstObject instead
-			UClass* FoundClass = FindFirstObject<UClass>(*AssetName, EFindFirstObjectOptions::NativeFirst);
-#else
-			UClass* FoundClass = FindObject<UClass>(ANY_PACKAGE, *AssetName);
-#endif
+			UClass* FoundClass = FHoudiniEngineRuntimeUtils::GetClassByName(AssetName);
+
 			if (FoundClass != nullptr)
 			{
 				// TODO: ensure we'll be able to create an actor from this class! 
@@ -1688,13 +1685,7 @@ FHoudiniInstanceTranslator::GetAttributeInstancerObjectsAndTransforms(
 
 				if (!AttributeObject)
 				{
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1
-					// UE5.1 deprecated ANY_PACKAGE, using a null outer doesn't work so use FindFirstObject instead
-					UClass* FoundClass = FindFirstObject<UClass>(*Iter, EFindFirstObjectOptions::NativeFirst);
-#else
-					UClass* FoundClass = FindObject<UClass>(ANY_PACKAGE, *Iter);
-#endif
-
+					UClass* FoundClass = FHoudiniEngineRuntimeUtils::GetClassByName(Iter);
 					if (FoundClass != nullptr)
 					{
 						// TODO: ensure we'll be able to create an actor from this class!
@@ -2083,15 +2074,15 @@ FHoudiniInstanceTranslator::CreateOrUpdateInstancer(
 	TArray<USceneComponent*>& NewComponents,
 	TArray<AActor*>& OldActors,
 	TArray<AActor*>& NewActors,
-	const bool InIsSplitMeshInstancer,
-	const bool InIsFoliageInstancer,
+	bool InIsSplitMeshInstancer,
+	bool InIsFoliageInstancer,
 	const TArray<UMaterialInterface *>& InstancerMaterials,
 	const TArray<int32>& OriginalInstancerObjectIndices,
 	int32& FoliageTypeCount,
 	UFoliageType*& FoliageTypeUsed,
 	UWorld*& WorldUsed,
-	const bool bForceHISM,
-	const bool bForceInstancer)
+	bool bForceHISM,
+	bool bForceInstancer)
 {
 	// See if we can reuse the old component
 	InstancerComponentType OldType = GetComponentsType(OldComponents);
@@ -4091,8 +4082,13 @@ FHoudiniInstanceTranslator::UpdateChangedPerInstanceCustomData(
 
 	// Force recreation of the render data when proxy is created
 	//NewISMC->InstanceUpdateCmdBuffer.Edit();
+
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
+	// TODO:5.4 ?? fix me!!
+#else
 	// Cant call the edit function above because the function is defined in a different cpp file than the .h it is declared in...
 	ISMC->InstanceUpdateCmdBuffer.NumEdits++;
+#endif
 	
 	ISMC->MarkRenderStateDirty();
 	

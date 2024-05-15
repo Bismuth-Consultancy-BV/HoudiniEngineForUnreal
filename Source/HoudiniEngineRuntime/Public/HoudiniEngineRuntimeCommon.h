@@ -52,6 +52,13 @@ enum class EHoudiniEngineBakeOption : uint8
 #endif
 
 UENUM()
+enum class EHoudiniEngineActorBakeOption : uint8
+{
+	OneActorPerComponent,
+	OneActorPerHDA
+};
+
+UENUM()
 enum class EHoudiniLandscapeOutputBakeType : uint8
 {
 	Detachment,

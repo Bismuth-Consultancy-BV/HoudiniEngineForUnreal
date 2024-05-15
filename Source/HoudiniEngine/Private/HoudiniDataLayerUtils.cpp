@@ -29,7 +29,7 @@
 #include "HoudiniEngine.h"
 #include "HoudiniEngineUtils.h"
 #include "LevelEditorMenuContext.h"
-#include "NaniteSceneProxy.h"
+//#include "NaniteSceneProxy.h"
 #include "HAPI/HAPI_Common.h"
 #include "WorldPartition/DataLayer/WorldDataLayers.h"
 #include "HoudiniPackageParams.h"
@@ -74,7 +74,11 @@ void FHoudiniDataLayerUtils::AddActorToLayer(
 {
 	// Find the Data Layer Instance for this actor.
 	UDataLayerInstance* TargetDataLayerInstance = nullptr;
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
+	WorldDataLayers->ForEachDataLayerInstance([&](UDataLayerInstance* DataLayer)
+#else
 	WorldDataLayers->ForEachDataLayer([&](UDataLayerInstance* DataLayer)
+#endif
 		{
 			FString DataLayerName = DataLayer->GetDataLayerShortName();
 			if (DataLayerName != Layer.Name)

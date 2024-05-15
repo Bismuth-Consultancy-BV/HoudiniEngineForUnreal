@@ -112,9 +112,21 @@ UHoudiniInstancedActorComponent::AddReferencedObjects(UObject * InThis, FReferen
     if ( IsValid(ThisHIAC) )
     {
         if ( IsValid(ThisHIAC->InstancedObject) )
-            Collector.AddReferencedObject( ThisHIAC->InstancedObject, ThisHIAC );
+            Collector.AddReferencedObject(
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
+				ObjectPtrWrap(ThisHIAC->InstancedObject),
+#else
+				ThisHIAC->InstancedObject,
+#endif
+				ThisHIAC );
 
-        Collector.AddReferencedObjects(ThisHIAC->InstancedActors, ThisHIAC );
+        Collector.AddReferencedObjects(
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
+			ObjectPtrWrap(ThisHIAC->InstancedActors),
+#else
+			ThisHIAC->InstancedActors,
+#endif
+			ThisHIAC );
     }
 }
 

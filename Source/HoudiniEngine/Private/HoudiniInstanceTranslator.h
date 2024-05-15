@@ -328,15 +328,15 @@ struct HOUDINIENGINE_API FHoudiniInstanceTranslator
 			TArray<USceneComponent*>& NewComponents,
 			TArray<AActor*>& OldActors,
 			TArray<AActor*>& NewActors,
-			const bool InIsSplitMeshInstancer,
-			const bool InIsFoliageInstancer,
+			bool InIsSplitMeshInstancer,
+			bool InIsFoliageInstancer,
 			const TArray<UMaterialInterface *>& InstancerMaterials,
 			const TArray<int32>& OriginalInstancerObjectIndices, 
 			int32& FoliageTypeCount,
 			UFoliageType*& FoliageTypeUsed,
 			UWorld* & WorldUsed,
-			const bool bForceHISM = false,
-			const bool bForceInstancer = false);
+			bool bForceHISM = false,
+			bool bForceInstancer = false);
 
 		// Create or update an ISMC / HISMC
 		static bool CreateOrUpdateInstancedStaticMeshComponent(

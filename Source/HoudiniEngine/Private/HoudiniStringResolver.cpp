@@ -72,7 +72,7 @@ void FHoudiniStringResolver::SetTokensFromStringMap(const TMap<FString, FString>
 FString FHoudiniStringResolver::ResolveString(
 	const FString& InString) const
 {
-	const FString Result = FString::Format(*InString, CachedTokens);
+	FString Result = FString::Format(*InString, CachedTokens);
 	return Result;
 }
 

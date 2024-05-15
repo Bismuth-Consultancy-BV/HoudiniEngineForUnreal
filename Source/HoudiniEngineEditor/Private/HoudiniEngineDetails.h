@@ -117,7 +117,8 @@ public:
 	/** Construct drop down menu content for Houdini asset. **/
 	//static TSharedRef< SWidget > OnGetHoudiniAssetMenuContent(TArray<UHoudiniAssetComponent*> InHACs);
 
-	static TSharedPtr<SWidget> ConstructActionMenu(const TArray<TWeakObjectPtr<UHoudiniAssetComponent>>& InHACs, class IDetailLayoutBuilder*);
+	static TSharedPtr<SWidget> ConstructActionMenu(
+		const TArray<TWeakObjectPtr<UHoudiniAssetComponent>>& InHACs, class IDetailLayoutBuilder*);
 
 	static void AddHeaderRowForHoudiniAssetComponent(
 		IDetailCategoryBuilder& HoudiniEngineCategoryBuilder,
@@ -138,7 +139,22 @@ public:
 	// Helper to check if InWeakObjectPointer is valid or not. If not valid, the filepath and line number where the check
 	// occurred is logged.
 	template <class T>
-	static bool IsValidWeakObjectPointer(const TWeakObjectPtr<T>& InWeakObjectPointer, const bool bInLogInvalid=false, const FString& InFilePath=FString(), const int32 InLineNumber=INDEX_NONE);
+	static bool IsValidWeakObjectPointer(
+		const TWeakObjectPtr<T>& InWeakObjectPointer,
+		const bool bInLogInvalid=false,
+		const FString& InFilePath=FString(),
+		const int32 InLineNumber=INDEX_NONE);
+
+private:
+	static void SetCookFolderPath(
+		const FText& InPathText,
+		const TWeakObjectPtr<UHoudiniAssetComponent>& InMainHAC,
+		const TArray<TWeakObjectPtr<UHoudiniAssetComponent>>& InHACs);
+
+	static void SetBakeFolderPath(
+		const FText& InPathText,
+		const TWeakObjectPtr<UHoudiniAssetComponent>& InMainHAC,
+		const TArray<TWeakObjectPtr<UHoudiniAssetComponent>>& InHACs);
 };
 
 

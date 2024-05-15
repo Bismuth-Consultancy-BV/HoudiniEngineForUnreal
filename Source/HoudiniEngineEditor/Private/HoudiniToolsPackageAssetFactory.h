@@ -33,6 +33,7 @@
 #include "Modules/ModuleManager.h"
 #include "UObject/Object.h"
 #include "HoudiniToolsEditor.h"
+#include "HoudiniToolsRuntimeUtils.h"
 
 #include "HoudiniToolsPackageAssetFactory.generated.h"
 
@@ -79,6 +80,23 @@ public:
 			ToolsPackage = NewObject<UHoudiniToolsPackageAsset>(InParent, Class, Name, Flags);
 			FHoudiniToolsEditor::PopulatePackageWithDefaultData(ToolsPackage);
 		}
+
+		// If the name is not "HoudiniToolsPackage", rename it immediately
+		FString DefaultName = FHoudiniToolsRuntimeUtils::GetPackageUAssetName();
+		if (Name.ToString() != DefaultName)
+		{
+			if (!FHoudiniToolsRuntimeUtils::ShowToolsPackageRenameConfirmDialog())
+			{
+				ToolsPackage->Rename(*DefaultName);
+			}
+			else
+			{
+				// Dont rename back, but add a warning in the logs...
+				HOUDINI_LOG_WARNING(TEXT("Renaming a HoudiniToolsPackage to anything but \"HoudiniToolsPackage\" disables it."));
+			}
+		}
+
+
 		return ToolsPackage;
 	}
 

@@ -148,7 +148,8 @@ struct HOUDINIENGINERUNTIME_API FHoudiniGenericAttribute
 		FEditPropertyChain& InPropertyChain,
 		FProperty*& OutFoundProperty,
 		UObject*& OutFoundPropertyObject,
-		void*& OutContainer);
+		void*& OutContainer,
+		bool bDumpAttributes);
 
 	// Modifies the value of a found Property
 	static bool ModifyPropertyValueOnObject(
@@ -185,13 +186,19 @@ struct HOUDINIENGINERUNTIME_API FHoudiniGenericAttribute
 		const FString& InPropertyName,
 		FEditPropertyChain& InPropertyChain,
 		FProperty*& OutFoundProperty,
-		bool& bOutPropertyHasBeenFound,
-		void*& OutContainer);
+		bool& bOutExactPropertyHasBeenFound,
+		void*& OutContainer,
+		bool bDumpAttributes);
 
 	// Helper to call PostEditChangePropertyChain on InObject for the InPropertyChain. 
 	static bool HandlePostEditChangeProperty(
 		UObject* InObject,
 		FEditPropertyChain& InPropertyChain, 
 		FProperty* InProperty);
+
+	// Helper function for dumping generic property attributre details for a given property
+	// returns true if the property is supported
+	static bool DumpGenericAttributeForProperty(FProperty* InProperty);
+
 
 };

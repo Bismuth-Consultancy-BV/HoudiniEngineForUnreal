@@ -632,6 +632,8 @@ struct HOUDINIENGINERUNTIME_API FHoudiniOutputObject
 
 	public:
 
+		void DestroyCookedData();
+
 		// The main output object
 		UPROPERTY()
 		UObject* OutputObject = nullptr;
@@ -753,6 +755,8 @@ class HOUDINIENGINERUNTIME_API UHoudiniOutput : public UObject
 	virtual ~UHoudiniOutput();
 
 public:
+
+	void DestroyCookedData();
 
 	//------------------------------------------------------------------------------------------------
 	// Accessors

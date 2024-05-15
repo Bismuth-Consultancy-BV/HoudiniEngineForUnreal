@@ -109,10 +109,26 @@ UHoudiniMeshSplitInstancerComponent::AddReferencedObjects( UObject * InThis, FRe
     UHoudiniMeshSplitInstancerComponent * ThisMSIC = Cast< UHoudiniMeshSplitInstancerComponent >(InThis);
     if ( IsValid(ThisMSIC) )
     {
-        Collector.AddReferencedObject(ThisMSIC->InstancedMesh, ThisMSIC);
-		for(auto& Mat : ThisMSIC->OverrideMaterials)
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
+        Collector.AddReferencedObject(ObjectPtrWrap(ThisMSIC->InstancedMesh), ThisMSIC);
+#else
+		Collector.AddReferencedObject(ThisMSIC->InstancedMesh, ThisMSIC);
+#endif
+
+		for (auto& Mat : ThisMSIC->OverrideMaterials)
+		{
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
+			Collector.AddReferencedObject(ObjectPtrWrap(Mat), ThisMSIC);
+#else
 			Collector.AddReferencedObject(Mat, ThisMSIC);
-        Collector.AddReferencedObjects(ThisMSIC->Instances, ThisMSIC);
+#endif
+		}
+
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
+		Collector.AddReferencedObjects(ObjectPtrWrap(ThisMSIC->Instances), ThisMSIC);
+#else
+		Collector.AddReferencedObjects(ThisMSIC->Instances, ThisMSIC);
+#endif
     }
 }
 

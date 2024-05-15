@@ -461,7 +461,11 @@ void FHoudiniEditorTestUtils::TakeScreenshotEditor(FHoudiniAutomationTest* Test,
 		FAutomationScreenshotData Data;
 		Data.Width = OutImageSize.X;
 		Data.Height = OutImageSize.Y;
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4
+		Data.ScreenShotName = ScreenshotName;
+#else
 		Data.ScreenshotName = ScreenshotName;
+#endif
 
 		// Sometimes errors on 4.25 if not offscreen
 		if (bRenderOffScreen)

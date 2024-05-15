@@ -129,9 +129,17 @@ public:
 
 	static void ShowPluginEditorSettings();
 
+	static void OpenContentExampleGit();
+
+	static void BrowseToContentExamples();
+
+	static bool HasContentExamples();
+
 	static void OnlineDocumentation();
 
 	static void OnlineForum();
+
+	static void DumpGenericAttribute(const TArray<FString>& Args);
 
 	// Helper function for building static meshes for all assets using HoudiniStaticMesh
 	// If bSilent is false, show a progress dialog.
@@ -207,9 +215,15 @@ public:
 	// Menu action called to clean up all unused files in the cook temp folder
 	TSharedPtr<FUICommandInfo> _CleanUpTempFolder;
 
-	//
+
+	// Opens the content examples Git Repo
+	TSharedPtr<FUICommandInfo> _ContentExampleGit;
+	// Browse to the installed content example folder
+	TSharedPtr<FUICommandInfo> _ContentExampleBrowseTo;
+	
+	// Opens the online doc
 	TSharedPtr<FUICommandInfo> _OnlineDoc;
-	//
+	// Opens the plugin forum
 	TSharedPtr<FUICommandInfo> _OnlineForum;
 	// Menu action called to report a bug.
 	TSharedPtr<FUICommandInfo> _ReportBug;
